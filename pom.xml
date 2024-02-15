@@ -74,6 +74,11 @@
             <optional>true</optional>
         </dependency>
         <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-glfw</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
             <groupId>org.lwjglx</groupId>
             <artifactId>lwjgl3-awt</artifactId>
             <version>0.2.0</version>
@@ -89,6 +94,12 @@
         <dependency>
             <groupId>org.lwjgl</groupId>
             <artifactId>lwjgl-vulkan</artifactId>
+            <classifier>${lwjgl.natives}</classifier>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-glfw</artifactId>
             <classifier>${lwjgl.natives}</classifier>
             <optional>true</optional>
         </dependency>
