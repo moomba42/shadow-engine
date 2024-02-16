@@ -24,9 +24,10 @@
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <lwjgl.version>3.3.1</lwjgl.version>
         <flatlaf.version>3.3</flatlaf.version>
-        <lwjgl3-awt.version>0.2.0</lwjgl3-awt.version>
+        <joml.version>1.10.5</joml.version>
+        <lwjgl.version>3.3.1</lwjgl.version>
+        <lwjgl-awt.version>0.2.0</lwjgl-awt.version>
     </properties>
 
     <profiles>
@@ -62,6 +63,17 @@
             <artifactId>flatlaf</artifactId>
             <version>${flatlaf.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.joml</groupId>
+            <artifactId>joml</artifactId>
+            <version>${joml.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjglx</groupId>
+            <artifactId>lwjgl3-awt</artifactId>
+            <version>${lwjgl-awt.version}</version>
+        </dependency>
+
 
         <!--    LWJGL    -->
         <dependency>
@@ -71,18 +83,10 @@
         <dependency>
             <groupId>org.lwjgl</groupId>
             <artifactId>lwjgl-vulkan</artifactId>
-            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.lwjgl</groupId>
             <artifactId>lwjgl-glfw</artifactId>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.lwjglx</groupId>
-            <artifactId>lwjgl3-awt</artifactId>
-            <version>0.2.0</version>
-            <optional>true</optional>
         </dependency>
 
         <!--    Natives    -->

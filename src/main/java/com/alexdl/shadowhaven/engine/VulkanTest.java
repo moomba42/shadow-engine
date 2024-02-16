@@ -1,5 +1,7 @@
 package com.alexdl.shadowhaven.engine;
 
+import org.joml.Matrix4f;
+import org.joml.Vector4f;
 import org.lwjgl.system.MemoryStack;
 
 import java.nio.IntBuffer;
@@ -20,8 +22,15 @@ public class VulkanTest {
             System.out.printf("Extension count: %d", extensionCount.get(0));
         }
 
+        Matrix4f testMatrix = new Matrix4f();
+        Vector4f testVector = new Vector4f(1.0f);
+        Vector4f result = testVector.mul(testMatrix);
+
         while(!glfwWindowShouldClose(window)) {
             glfwPollEvents();
         }
+
+        glfwDestroyWindow(window);
+        glfwTerminate();
     }
 }
