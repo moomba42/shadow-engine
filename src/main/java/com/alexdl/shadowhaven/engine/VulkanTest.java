@@ -16,6 +16,7 @@ public class VulkanTest {
             glfwPollEvents();
         }
 
+        renderer.dispose();
         glfwDestroyWindow(window);
         glfwTerminate();
     }

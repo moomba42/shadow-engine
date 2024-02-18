@@ -1,5 +1,23 @@
 package com.alexdl.shadowhaven.engine.vulkan;
 
+import com.alexdl.shadowhaven.engine.GLFWRuntimeException;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.Platform;
+import org.lwjgl.vulkan.KHRPortabilityEnumeration;
+import org.lwjgl.vulkan.VkApplicationInfo;
+import org.lwjgl.vulkan.VkExtensionProperties;
+import org.lwjgl.vulkan.VkInstance;
+import org.lwjgl.vulkan.VkInstanceCreateInfo;
+import org.lwjgl.vulkan.VkPhysicalDevice;
+import org.lwjgl.vulkan.VkQueueFamilyProperties;
+
+import javax.annotation.Nullable;
+import java.nio.IntBuffer;
+import java.util.Objects;
+
+import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
+import static org.lwjgl.system.MemoryUtil.memASCII;
 import static org.lwjgl.vulkan.EXTDebugReport.VK_ERROR_VALIDATION_FAILED_EXT;
 import static org.lwjgl.vulkan.KHRDisplaySwapchain.VK_ERROR_INCOMPATIBLE_DISPLAY_KHR;
 import static org.lwjgl.vulkan.KHRSurface.VK_ERROR_NATIVE_WINDOW_IN_USE_KHR;
@@ -9,6 +27,9 @@ import static org.lwjgl.vulkan.KHRSwapchain.VK_SUBOPTIMAL_KHR;
 import static org.lwjgl.vulkan.VK10.*;
 
 public class VulkanUtils {
+    private static final int VULKAN_SDK_VERSION = VK_MAKE_API_VERSION(0, 1, 3, 215);
+    private static final int PORTABILITY_REQUIREMENT_SDK_VERSION = VK_MAKE_API_VERSION(0, 1, 3, 216);
+    private static final boolean REQUIRES_PORTABILITY_EXTENSION = Platform.get().equals(Platform.MACOSX) && VULKAN_SDK_VERSION >= PORTABILITY_REQUIREMENT_SDK_VERSION;
     public static final String NULL_STRING = null;
     public static void throwIfFailed(int vulkanResultCode) {
         if(vulkanResultCode != VK_SUCCESS) {
@@ -71,6 +92,145 @@ public class VulkanUtils {
                 return "A validation layer found an error.";
             default:
                 return "Unknown result code";
+        }
+    }
+
+    static PointerBuffer enumeratePhysicalDevices(VkInstance instance, MemoryStack stack) {
+        IntBuffer physicalDeviceCountPointer = stack.mallocInt(1);
+        throwIfFailed(vkEnumeratePhysicalDevices(instance, physicalDeviceCountPointer, null));
+
+        PointerBuffer physicalDevices = stack.mallocPointer(physicalDeviceCountPointer.get(0));
+        throwIfFailed(vkEnumeratePhysicalDevices(instance, physicalDeviceCountPointer, physicalDevices));
+
+        return physicalDevices;
+    }
+
+    static VkExtensionProperties.Buffer enumerateInstanceExtensionProperties(@Nullable String layerName, MemoryStack stack) {
+        IntBuffer extensionCountPointer = stack.mallocInt(1);
+        throwIfFailed(vkEnumerateInstanceExtensionProperties(layerName, extensionCountPointer, null));
+
+        VkExtensionProperties.Buffer extensions = VkExtensionProperties.malloc(extensionCountPointer.get(0), stack);
+        throwIfFailed(vkEnumerateInstanceExtensionProperties(layerName, extensionCountPointer, extensions));
+        return extensions;
+    }
+
+    static VkQueueFamilyProperties.Buffer getPhysicalDeviceQueueFamilyProperties(VkPhysicalDevice physicalDevice, MemoryStack stack) {
+        IntBuffer queueFamilyCountPointer = stack.mallocInt(1);
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamilyCountPointer, null);
+
+        VkQueueFamilyProperties.Buffer queueFamilies = VkQueueFamilyProperties.malloc(queueFamilyCountPointer.get(0), stack);
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamilyCountPointer, queueFamilies);
+        return queueFamilies;
+    }
+
+    static void putAllGlfwExtensions(PointerBuffer target) {
+        PointerBuffer glfwExtensions = glfwGetRequiredInstanceExtensions();
+        if(glfwExtensions == null) {
+            throw new GLFWRuntimeException("No set of extensions allowing GLFW integration was found");
+        }
+        for (int i = 0; i < glfwExtensions.capacity(); i++) {
+            // Each pointer points to an ASCII string which is the name of the required extension
+            target.put(glfwExtensions.get(i));
+        }
+    }
+
+    static VkPhysicalDevice findFirstSuitablePhysicalDevice(VkInstance instance) {
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer physicalDevices = enumeratePhysicalDevices(instance, stack);
+            if(physicalDevices.limit() == 0) {
+                return null;
+            }
+
+            for(int i = 0; i < physicalDevices.limit(); i++) {
+                VkPhysicalDevice physicalDevice = new VkPhysicalDevice(physicalDevices.get(i), instance);
+                if(isSuitableDevice(physicalDevice)) {
+                    return physicalDevice;
+                }
+            }
+        }
+        return null;
+    }
+
+    static boolean isSuitableDevice(VkPhysicalDevice physicalDevice) {
+        int graphicsQueueFamilyLocation = findGraphicsQueueFamilyLocation(physicalDevice);
+        return graphicsQueueFamilyLocation >= 0;
+    }
+
+    static int findGraphicsQueueFamilyLocation(VkPhysicalDevice physicalDevice) {
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            VkQueueFamilyProperties.Buffer queueFamilies = getPhysicalDeviceQueueFamilyProperties(physicalDevice, stack);
+            for(int i = 0; i < queueFamilies.queueCount(); i++) {
+                VkQueueFamilyProperties queueFamily = queueFamilies.get(i);
+                if(queueFamily.queueCount() > 0 && (queueFamily.queueFlags() & VK_QUEUE_GRAPHICS_BIT) > 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    static String findFirstUnsupportedExtension(VkExtensionProperties.Buffer actualExtensions, PointerBuffer requiredExtensionNamesAscii) {
+        for (int i = 0; i < requiredExtensionNamesAscii.limit(); i++) {
+            String requiredExtensionName = requiredExtensionNamesAscii.getStringASCII(i);
+            boolean isContained = false;
+            for (int j = 0; j < actualExtensions.capacity(); j++) {
+                String actualExtensionName = actualExtensions.get(j).extensionNameString();
+                if (Objects.equals(requiredExtensionName, actualExtensionName)) {
+                    isContained = true;
+                }
+            }
+            if (!isContained) {
+                return requiredExtensionName;
+            }
+        }
+        return null;
+    }
+
+    static VkInstance createInstance(String applicationName) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            // Info about the app itself
+            VkApplicationInfo applicationInfo = VkApplicationInfo.malloc(stack)
+                    // We specify the type of struct that this struct is because there is no reflection in C.
+                    .sType(VK_STRUCTURE_TYPE_APPLICATION_INFO)
+                    .pApplicationName(stack.UTF8(applicationName))
+                    .applicationVersion(VK_MAKE_API_VERSION(0, 1, 0, 0))
+                    .pEngineName(stack.UTF8("Shadow Engine"))
+                    .apiVersion(VK_MAKE_API_VERSION(0, 1, 0, 0)); // this affects the app
+
+            // Create required extensions list
+            PointerBuffer requiredExtensionNamesAscii = stack.mallocPointer(64);
+            putAllGlfwExtensions(requiredExtensionNamesAscii);
+            if (REQUIRES_PORTABILITY_EXTENSION) {
+                // This is needed for vulkan sdk version >= 1.3.216 on macOS
+                requiredExtensionNamesAscii.put(memASCII(KHRPortabilityEnumeration.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME));
+            }
+            requiredExtensionNamesAscii.flip();
+
+            // Get actual extension list and compare with required
+            VkExtensionProperties.Buffer actualExtensions = enumerateInstanceExtensionProperties(NULL_STRING, stack);
+            String unsupportedExtension = findFirstUnsupportedExtension(actualExtensions, requiredExtensionNamesAscii);
+            if (unsupportedExtension != null) {
+                throw new RuntimeException("Unsupported extension: " + unsupportedExtension);
+            }
+
+            // Create flags list
+            int flags = 0;
+            if (REQUIRES_PORTABILITY_EXTENSION) {
+                // This is needed for vulkan sdk version >= 1.3.216 on macOS
+                flags |= KHRPortabilityEnumeration.VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+            }
+
+            // Info to create a Vulkan instance
+            VkInstanceCreateInfo createInfo = VkInstanceCreateInfo.malloc(stack)
+                    .sType(VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
+                    .flags(flags)
+                    .pApplicationInfo(applicationInfo)
+                    .ppEnabledLayerNames(null) // null is interpreted as null pointer
+                    .ppEnabledExtensionNames(requiredExtensionNamesAscii);
+
+            PointerBuffer instancePointer = stack.mallocPointer(1);
+            throwIfFailed(vkCreateInstance(createInfo, null, instancePointer));
+            return new VkInstance(instancePointer.get(0), createInfo);
         }
     }
 }
