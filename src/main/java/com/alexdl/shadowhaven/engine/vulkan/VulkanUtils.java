@@ -1,4 +1,4 @@
-package com.alexdl.shadowhaven.engine;
+package com.alexdl.shadowhaven.engine.vulkan;
 
 import static org.lwjgl.vulkan.EXTDebugReport.VK_ERROR_VALIDATION_FAILED_EXT;
 import static org.lwjgl.vulkan.KHRDisplaySwapchain.VK_ERROR_INCOMPATIBLE_DISPLAY_KHR;

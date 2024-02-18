@@ -1,5 +1,6 @@
-package com.alexdl.shadowhaven.engine;
+package com.alexdl.shadowhaven.engine.vulkan;
 
+import com.alexdl.shadowhaven.engine.GLFWRuntimeException;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.Platform;
@@ -13,8 +14,8 @@ import javax.annotation.Nullable;
 import java.nio.IntBuffer;
 import java.util.Objects;
 
-import static com.alexdl.shadowhaven.engine.VulkanUtils.NULL_STRING;
-import static com.alexdl.shadowhaven.engine.VulkanUtils.throwIfFailed;
+import static com.alexdl.shadowhaven.engine.vulkan.VulkanUtils.NULL_STRING;
+import static com.alexdl.shadowhaven.engine.vulkan.VulkanUtils.throwIfFailed;
 import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
 import static org.lwjgl.system.MemoryUtil.memASCII;
 import static org.lwjgl.vulkan.VK10.*;

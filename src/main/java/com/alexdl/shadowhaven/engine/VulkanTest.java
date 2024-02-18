@@ -1,5 +1,7 @@
 package com.alexdl.shadowhaven.engine;
 
+import com.alexdl.shadowhaven.engine.vulkan.VulkanRenderer;
+
 import static org.lwjgl.glfw.GLFW.*;
 
 public class VulkanTest {

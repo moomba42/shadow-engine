@@ -16,7 +16,7 @@ import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
-import static com.alexdl.shadowhaven.engine.VulkanUtils.translateVulkanResult;
+import static com.alexdl.shadowhaven.engine.vulkan.VulkanUtils.translateVulkanResult;
 import static org.lwjgl.vulkan.KHRSurface.VK_KHR_SURFACE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.VK10.*;
 
