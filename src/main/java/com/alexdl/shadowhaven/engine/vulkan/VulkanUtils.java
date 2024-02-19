@@ -4,19 +4,15 @@ import com.alexdl.shadowhaven.engine.GLFWRuntimeException;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.Platform;
-import org.lwjgl.vulkan.KHRPortabilityEnumeration;
-import org.lwjgl.vulkan.VkApplicationInfo;
-import org.lwjgl.vulkan.VkExtensionProperties;
-import org.lwjgl.vulkan.VkInstance;
-import org.lwjgl.vulkan.VkInstanceCreateInfo;
-import org.lwjgl.vulkan.VkPhysicalDevice;
-import org.lwjgl.vulkan.VkQueueFamilyProperties;
+import org.lwjgl.vulkan.*;
 
 import javax.annotation.Nullable;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.Objects;
 
 import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
+import static org.lwjgl.system.MemoryUtil.NULL;
 import static org.lwjgl.system.MemoryUtil.memASCII;
 import static org.lwjgl.vulkan.EXTDebugReport.VK_ERROR_VALIDATION_FAILED_EXT;
 import static org.lwjgl.vulkan.KHRDisplaySwapchain.VK_ERROR_INCOMPATIBLE_DISPLAY_KHR;
@@ -161,7 +157,7 @@ public class VulkanUtils {
             VkQueueFamilyProperties.Buffer queueFamilies = getPhysicalDeviceQueueFamilyProperties(physicalDevice, stack);
             for(int i = 0; i < queueFamilies.queueCount(); i++) {
                 VkQueueFamilyProperties queueFamily = queueFamilies.get(i);
-                if(queueFamily.queueCount() > 0 && (queueFamily.queueFlags() & VK_QUEUE_GRAPHICS_BIT) > 0) {
+                if(queueFamily.queueCount() > 0 && (queueFamily.queueFlags() & VK_QUEUE_GRAPHICS_BIT) != 0) {
                     return i;
                 }
             }
@@ -191,11 +187,12 @@ public class VulkanUtils {
             // Info about the app itself
             VkApplicationInfo applicationInfo = VkApplicationInfo.malloc(stack)
                     // We specify the type of struct that this struct is because there is no reflection in C.
-                    .sType(VK_STRUCTURE_TYPE_APPLICATION_INFO)
+                    .sType$Default()
+                    .pNext(NULL)
                     .pApplicationName(stack.UTF8(applicationName))
                     .applicationVersion(VK_MAKE_API_VERSION(0, 1, 0, 0))
                     .pEngineName(stack.UTF8("Shadow Engine"))
-                    .apiVersion(VK_MAKE_API_VERSION(0, 1, 0, 0)); // this affects the app
+                    .apiVersion(VK_MAKE_API_VERSION(0, 1, 1, 0)); // this affects the app
 
             // Create required extensions list
             PointerBuffer requiredExtensionNamesAscii = stack.mallocPointer(64);
@@ -222,7 +219,8 @@ public class VulkanUtils {
 
             // Info to create a Vulkan instance
             VkInstanceCreateInfo createInfo = VkInstanceCreateInfo.malloc(stack)
-                    .sType(VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
+                    .sType$Default()
+                    .pNext(NULL)
                     .flags(flags)
                     .pApplicationInfo(applicationInfo)
                     .ppEnabledLayerNames(null) // null is interpreted as null pointer
@@ -231,6 +229,45 @@ public class VulkanUtils {
             PointerBuffer instancePointer = stack.mallocPointer(1);
             throwIfFailed(vkCreateInstance(createInfo, null, instancePointer));
             return new VkInstance(instancePointer.get(0), createInfo);
+        }
+    }
+
+    public static VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice) {
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            int graphicsQueueFamilyIndex = findGraphicsQueueFamilyLocation(physicalDevice);
+            FloatBuffer priorityPointer = stack.floats(1.0f);
+
+            VkDeviceQueueCreateInfo queueCreateInfo = VkDeviceQueueCreateInfo.malloc(stack)
+                    .sType$Default()
+                    .pNext(NULL)
+                    .flags(0)
+                    .queueFamilyIndex(graphicsQueueFamilyIndex)
+                    .pQueuePriorities(priorityPointer); // Also sets queueCount to the number of priorities
+            VkDeviceQueueCreateInfo.Buffer queueCreateInfos = VkDeviceQueueCreateInfo.malloc(1, stack);
+            queueCreateInfos.put(0, queueCreateInfo);
+
+            VkPhysicalDeviceFeatures deviceFeatures = VkPhysicalDeviceFeatures.calloc(stack);
+
+            VkDeviceCreateInfo deviceCreateInfo = VkDeviceCreateInfo.malloc(stack)
+                    .sType$Default()
+                    .pNext(NULL)
+                    .flags(0)
+                    .pQueueCreateInfos(queueCreateInfos) // Also sets queueCreateInfoCount
+                    .ppEnabledExtensionNames(null) // Also sets enabledExtensionCount
+                    .pEnabledFeatures(deviceFeatures);
+
+            PointerBuffer logicalDevicePointer = stack.mallocPointer(1);
+            throwIfFailed(vkCreateDevice(physicalDevice, deviceCreateInfo, null, logicalDevicePointer));
+
+            return new VkDevice(logicalDevicePointer.get(0), physicalDevice, deviceCreateInfo);
+        }
+    }
+
+    public static VkQueue findFirstQueueByFamily(VkDevice logicalDevice, int familyIndex) {
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer queuePointer = stack.mallocPointer(1);
+            vkGetDeviceQueue(logicalDevice, familyIndex, 0, queuePointer);
+            return new VkQueue(queuePointer.get(0), logicalDevice);
         }
     }
 }
