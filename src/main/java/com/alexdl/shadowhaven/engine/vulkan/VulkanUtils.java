@@ -3,18 +3,23 @@ package com.alexdl.shadowhaven.engine.vulkan;
 import com.alexdl.shadowhaven.engine.GLFWRuntimeException;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
-import org.lwjgl.system.Platform;
 import org.lwjgl.vulkan.*;
 
-import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
 import static org.lwjgl.system.MemoryUtil.NULL;
 import static org.lwjgl.system.MemoryUtil.memASCII;
 import static org.lwjgl.vulkan.EXTDebugReport.VK_ERROR_VALIDATION_FAILED_EXT;
+import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.KHRDisplaySwapchain.VK_ERROR_INCOMPATIBLE_DISPLAY_KHR;
 import static org.lwjgl.vulkan.KHRSurface.VK_ERROR_NATIVE_WINDOW_IN_USE_KHR;
 import static org.lwjgl.vulkan.KHRSurface.VK_ERROR_SURFACE_LOST_KHR;
@@ -22,16 +27,69 @@ import static org.lwjgl.vulkan.KHRSwapchain.VK_ERROR_OUT_OF_DATE_KHR;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_SUBOPTIMAL_KHR;
 import static org.lwjgl.vulkan.VK10.*;
 
+@SuppressWarnings("SameParameterValue")
 public class VulkanUtils {
-    private static final int VULKAN_SDK_VERSION = VK_MAKE_API_VERSION(0, 1, 3, 215);
-    private static final int PORTABILITY_REQUIREMENT_SDK_VERSION = VK_MAKE_API_VERSION(0, 1, 3, 216);
-    private static final boolean REQUIRES_PORTABILITY_EXTENSION = Platform.get().equals(Platform.MACOSX) && VULKAN_SDK_VERSION >= PORTABILITY_REQUIREMENT_SDK_VERSION;
     public static final String NULL_STRING = null;
+
+    private static final VkDebugUtilsMessengerCallbackEXT debugCallbackFunction = VkDebugUtilsMessengerCallbackEXT.create(
+            (messageSeverity, messageTypes, pCallbackData, pUserData) -> {
+                String severity = getVkDebugMessageSeverity(messageSeverity);
+
+                String type = getVkDebugMessageType(messageTypes);
+
+                VkDebugUtilsMessengerCallbackDataEXT data = VkDebugUtilsMessengerCallbackDataEXT.create(pCallbackData);
+                System.err.format(
+                        "%s %s: [%s]\n\t%s\n",
+                        type, severity, data.pMessageIdNameString(), data.pMessageString()
+                );
+
+                /*
+                 * false indicates that layer should not bail-out of an
+                 * API call that had validation failures. This may mean that the
+                 * app dies inside the driver due to invalid parameter(s).
+                 * That's what would happen without validation layers, so we'll
+                 * keep that behavior here.
+                 */
+                return VK_FALSE;
+            }
+    );
+
+    private static String getVkDebugMessageType(int messageTypes) {
+        String type;
+        if ((messageTypes & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) != 0) {
+            type = "GENERAL";
+        } else if ((messageTypes & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) != 0) {
+            type = "VALIDATION";
+        } else if ((messageTypes & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) != 0) {
+            type = "PERFORMANCE";
+        } else {
+            type = "UNKNOWN";
+        }
+        return type;
+    }
+
+    private static String getVkDebugMessageSeverity(int messageSeverity) {
+        String severity;
+        if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) != 0) {
+            severity = "VERBOSE";
+        } else if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) != 0) {
+            severity = "INFO";
+        } else if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0) {
+            severity = "WARNING";
+        } else if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0) {
+            severity = "ERROR";
+        } else {
+            severity = "UNKNOWN";
+        }
+        return severity;
+    }
+
     public static void throwIfFailed(int vulkanResultCode) {
-        if(vulkanResultCode != VK_SUCCESS) {
+        if (vulkanResultCode != VK_SUCCESS) {
             throw new VulkanRuntimeException(vulkanResultCode, translateVulkanResult(vulkanResultCode));
         }
     }
+
     public static String translateVulkanResult(int vulkanResultCode) {
         switch (vulkanResultCode) {
             // Success codes
@@ -101,13 +159,32 @@ public class VulkanUtils {
         return physicalDevices;
     }
 
-    static VkExtensionProperties.Buffer enumerateInstanceExtensionProperties(@Nullable String layerName, MemoryStack stack) {
+    static VkExtensionProperties.Buffer enumerateDeviceExtensionProperties(VkPhysicalDevice physicalDevice, MemoryStack stack) {
+        IntBuffer deviceExtensionCountPointer = stack.mallocInt(1);
+        throwIfFailed(vkEnumerateDeviceExtensionProperties(physicalDevice, NULL_STRING, deviceExtensionCountPointer, null));
+
+        VkExtensionProperties.Buffer deviceExtensions = VkExtensionProperties.malloc(deviceExtensionCountPointer.get(0), stack);
+        throwIfFailed(vkEnumerateDeviceExtensionProperties(physicalDevice, NULL_STRING, deviceExtensionCountPointer, deviceExtensions));
+
+        return deviceExtensions;
+    }
+
+    static VkExtensionProperties.Buffer enumerateInstanceExtensionProperties(MemoryStack stack) {
         IntBuffer extensionCountPointer = stack.mallocInt(1);
-        throwIfFailed(vkEnumerateInstanceExtensionProperties(layerName, extensionCountPointer, null));
+        throwIfFailed(vkEnumerateInstanceExtensionProperties(NULL_STRING, extensionCountPointer, null));
 
         VkExtensionProperties.Buffer extensions = VkExtensionProperties.malloc(extensionCountPointer.get(0), stack);
-        throwIfFailed(vkEnumerateInstanceExtensionProperties(layerName, extensionCountPointer, extensions));
+        throwIfFailed(vkEnumerateInstanceExtensionProperties(NULL_STRING, extensionCountPointer, extensions));
         return extensions;
+    }
+
+    static VkLayerProperties.Buffer enumerateInstanceLayerProperties(MemoryStack stack) {
+        IntBuffer layerCountPointer = stack.mallocInt(1);
+        throwIfFailed(vkEnumerateInstanceLayerProperties(layerCountPointer, null));
+
+        VkLayerProperties.Buffer layers = VkLayerProperties.malloc(layerCountPointer.get(0), stack);
+        throwIfFailed(vkEnumerateInstanceLayerProperties(layerCountPointer, layers));
+        return layers;
     }
 
     static VkQueueFamilyProperties.Buffer getPhysicalDeviceQueueFamilyProperties(VkPhysicalDevice physicalDevice, MemoryStack stack) {
@@ -119,27 +196,28 @@ public class VulkanUtils {
         return queueFamilies;
     }
 
-    static void putAllGlfwExtensions(PointerBuffer target) {
-        PointerBuffer glfwExtensions = glfwGetRequiredInstanceExtensions();
-        if(glfwExtensions == null) {
+    static List<String> getAllGlfwExtensions() {
+        PointerBuffer glfwExtensionsBuffer = glfwGetRequiredInstanceExtensions();
+        if (glfwExtensionsBuffer == null) {
             throw new GLFWRuntimeException("No set of extensions allowing GLFW integration was found");
         }
-        for (int i = 0; i < glfwExtensions.capacity(); i++) {
-            // Each pointer points to an ASCII string which is the name of the required extension
-            target.put(glfwExtensions.get(i));
+        List<String> glfwExtensions = new ArrayList<>(glfwExtensionsBuffer.limit());
+        for (int i = 0; i < glfwExtensionsBuffer.capacity(); i++) {
+            glfwExtensions.add(i, memASCII(glfwExtensionsBuffer.get(i)));
         }
+        return glfwExtensions;
     }
 
     static VkPhysicalDevice findFirstSuitablePhysicalDevice(VkInstance instance) {
-        try(MemoryStack stack = MemoryStack.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             PointerBuffer physicalDevices = enumeratePhysicalDevices(instance, stack);
-            if(physicalDevices.limit() == 0) {
+            if (physicalDevices.limit() == 0) {
                 return null;
             }
 
-            for(int i = 0; i < physicalDevices.limit(); i++) {
+            for (int i = 0; i < physicalDevices.limit(); i++) {
                 VkPhysicalDevice physicalDevice = new VkPhysicalDevice(physicalDevices.get(i), instance);
-                if(isSuitableDevice(physicalDevice)) {
+                if (isSuitableDevice(physicalDevice)) {
                     return physicalDevice;
                 }
             }
@@ -153,11 +231,11 @@ public class VulkanUtils {
     }
 
     static int findGraphicsQueueFamilyLocation(VkPhysicalDevice physicalDevice) {
-        try(MemoryStack stack = MemoryStack.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             VkQueueFamilyProperties.Buffer queueFamilies = getPhysicalDeviceQueueFamilyProperties(physicalDevice, stack);
-            for(int i = 0; i < queueFamilies.queueCount(); i++) {
+            for (int i = 0; i < queueFamilies.queueCount(); i++) {
                 VkQueueFamilyProperties queueFamily = queueFamilies.get(i);
-                if(queueFamily.queueCount() > 0 && (queueFamily.queueFlags() & VK_QUEUE_GRAPHICS_BIT) != 0) {
+                if (queueFamily.queueCount() > 0 && (queueFamily.queueFlags() & VK_QUEUE_GRAPHICS_BIT) != 0) {
                     return i;
                 }
             }
@@ -165,24 +243,7 @@ public class VulkanUtils {
         return -1;
     }
 
-    static String findFirstUnsupportedExtension(VkExtensionProperties.Buffer actualExtensions, PointerBuffer requiredExtensionNamesAscii) {
-        for (int i = 0; i < requiredExtensionNamesAscii.limit(); i++) {
-            String requiredExtensionName = requiredExtensionNamesAscii.getStringASCII(i);
-            boolean isContained = false;
-            for (int j = 0; j < actualExtensions.capacity(); j++) {
-                String actualExtensionName = actualExtensions.get(j).extensionNameString();
-                if (Objects.equals(requiredExtensionName, actualExtensionName)) {
-                    isContained = true;
-                }
-            }
-            if (!isContained) {
-                return requiredExtensionName;
-            }
-        }
-        return null;
-    }
-
-    static VkInstance createInstance(String applicationName) {
+    static VkInstance createInstance(String applicationName, boolean enableDebugging) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             // Info about the app itself
             VkApplicationInfo applicationInfo = VkApplicationInfo.malloc(stack)
@@ -194,49 +255,99 @@ public class VulkanUtils {
                     .pEngineName(stack.UTF8("Shadow Engine"))
                     .apiVersion(VK_MAKE_API_VERSION(0, 1, 1, 0)); // this affects the app
 
-            // Create required extensions list
-            PointerBuffer requiredExtensionNamesAscii = stack.mallocPointer(64);
-            putAllGlfwExtensions(requiredExtensionNamesAscii);
-            if (REQUIRES_PORTABILITY_EXTENSION) {
-                // This is needed for vulkan sdk version >= 1.3.216 on macOS
-                requiredExtensionNamesAscii.put(memASCII(KHRPortabilityEnumeration.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME));
-            }
-            requiredExtensionNamesAscii.flip();
-
-            // Get actual extension list and compare with required
-            VkExtensionProperties.Buffer actualExtensions = enumerateInstanceExtensionProperties(NULL_STRING, stack);
-            String unsupportedExtension = findFirstUnsupportedExtension(actualExtensions, requiredExtensionNamesAscii);
-            if (unsupportedExtension != null) {
-                throw new RuntimeException("Unsupported extension: " + unsupportedExtension);
-            }
-
             // Create flags list
             int flags = 0;
-            if (REQUIRES_PORTABILITY_EXTENSION) {
-                // This is needed for vulkan sdk version >= 1.3.216 on macOS
+
+            // Extension list
+            HashSet<String> requiredExtensions = new HashSet<>(getAllGlfwExtensions());
+            HashSet<String> availableExtensions = enumerateInstanceExtensionProperties(stack).stream().map(VkExtensionProperties::extensionNameString).collect(Collectors.toCollection(HashSet::new));
+            for (String requiredExtension : requiredExtensions) {
+                if(!availableExtensions.contains(requiredExtension)) {
+                    throw new RuntimeException("Unsupported extension: " + requiredExtension);
+                }
+            }
+            // Required on macOS in later version of vulkan SDK
+            if(availableExtensions.contains(KHRPortabilityEnumeration.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
+                requiredExtensions.add(KHRPortabilityEnumeration.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
                 flags |= KHRPortabilityEnumeration.VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
             }
+            if(enableDebugging && availableExtensions.contains(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
+                requiredExtensions.add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+            }
+            PointerBuffer requiredExtensionsBuffer = stack.pointers(requiredExtensions.stream().map(stack::UTF8).toArray(ByteBuffer[]::new));
 
-            // Info to create a Vulkan instance
-            VkInstanceCreateInfo createInfo = VkInstanceCreateInfo.malloc(stack)
+            // Validation layer list
+            PointerBuffer requiredLayersBuffer = enableDebugging ? allocateAndValidateLayerList(List.of(
+                    // This will not exist if you're using the bundled lwjgl MoltenVK lib.
+                    // See README.md#Vulkan_validation_layers
+                    "VK_LAYER_KHRONOS_validation"
+            ), stack) : null;
+
+            // Create instance
+            VkInstanceCreateInfo instanceCreateInfo = VkInstanceCreateInfo.malloc(stack)
                     .sType$Default()
                     .pNext(NULL)
                     .flags(flags)
                     .pApplicationInfo(applicationInfo)
-                    .ppEnabledLayerNames(null) // null is interpreted as null pointer
-                    .ppEnabledExtensionNames(requiredExtensionNamesAscii);
+                    .ppEnabledLayerNames(requiredLayersBuffer)
+                    .ppEnabledExtensionNames(requiredExtensionsBuffer);
 
             PointerBuffer instancePointer = stack.mallocPointer(1);
-            throwIfFailed(vkCreateInstance(createInfo, null, instancePointer));
-            return new VkInstance(instancePointer.get(0), createInfo);
+            throwIfFailed(vkCreateInstance(instanceCreateInfo, null, instancePointer));
+            return new VkInstance(instancePointer.get(0), instanceCreateInfo);
         }
     }
 
-    public static VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice) {
+    public static long createDebugMessenger(VkInstance instance) {
         try(MemoryStack stack = MemoryStack.stackPush()) {
+            VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = VkDebugUtilsMessengerCreateInfoEXT.malloc(stack)
+                    .sType$Default()
+                    .pNext(NULL)
+                    .flags(0)
+                    .messageSeverity(
+                            // VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                            // VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+                    )
+                    .messageType(
+                            VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+                    )
+                    .pfnUserCallback(debugCallbackFunction)
+                    .pUserData(NULL);
+            LongBuffer callbackPointer = stack.mallocLong(1);
+            vkCreateDebugUtilsMessengerEXT(instance, debugCreateInfo, null, callbackPointer);
+            return callbackPointer.get(0);
+        }
+    }
+
+    private static PointerBuffer allocateAndValidateLayerList(List<String> requiredLayerNames, MemoryStack stack) {
+        VkLayerProperties.Buffer availableLayersBuffer = enumerateInstanceLayerProperties(stack);
+        List<String> availableLayerNames = availableLayersBuffer.stream().map(VkLayerProperties::layerNameString).collect(Collectors.toList());
+        for (String requiredLayerName : requiredLayerNames) {
+            boolean found = false;
+            for (String availableLayerName : availableLayerNames) {
+                if (Objects.equals(availableLayerName, requiredLayerName)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                throw new RuntimeException("Requested layer name is not available: " + requiredLayerName);
+            }
+        }
+
+        return stack.pointers(requiredLayerNames.stream().map(stack::UTF8).toArray(ByteBuffer[]::new));
+    }
+
+    public static VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             int graphicsQueueFamilyIndex = findGraphicsQueueFamilyLocation(physicalDevice);
             FloatBuffer priorityPointer = stack.floats(1.0f);
 
+            // Queues
             VkDeviceQueueCreateInfo queueCreateInfo = VkDeviceQueueCreateInfo.malloc(stack)
                     .sType$Default()
                     .pNext(NULL)
@@ -246,14 +357,30 @@ public class VulkanUtils {
             VkDeviceQueueCreateInfo.Buffer queueCreateInfos = VkDeviceQueueCreateInfo.malloc(1, stack);
             queueCreateInfos.put(0, queueCreateInfo);
 
+            // Features
             VkPhysicalDeviceFeatures deviceFeatures = VkPhysicalDeviceFeatures.calloc(stack);
 
+            // Extensions
+            VkExtensionProperties.Buffer availableExtensions = enumerateDeviceExtensionProperties(physicalDevice, stack);
+            List<String> availableExtensionNames = availableExtensions.stream()
+                    .map(VkExtensionProperties::extensionNameString)
+                    .collect(Collectors.toList());
+            List<String> enabledExtensionNames = new ArrayList<>();
+            for (String availableDeviceExtensionName : availableExtensionNames) {
+                if(Objects.equals(availableDeviceExtensionName, "VK_KHR_portability_subset")) {
+                    enabledExtensionNames.add("VK_KHR_portability_subset");
+                }
+            }
+            PointerBuffer enabledExtensionNamesBuffer = stack.pointers(enabledExtensionNames.stream().map(stack::UTF8).toArray(ByteBuffer[]::new));
+
+            // Create
             VkDeviceCreateInfo deviceCreateInfo = VkDeviceCreateInfo.malloc(stack)
                     .sType$Default()
                     .pNext(NULL)
                     .flags(0)
                     .pQueueCreateInfos(queueCreateInfos) // Also sets queueCreateInfoCount
-                    .ppEnabledExtensionNames(null) // Also sets enabledExtensionCount
+                    .ppEnabledLayerNames(null)
+                    .ppEnabledExtensionNames(enabledExtensionNamesBuffer) // Also sets enabledExtensionCount
                     .pEnabledFeatures(deviceFeatures);
 
             PointerBuffer logicalDevicePointer = stack.mallocPointer(1);
@@ -264,7 +391,7 @@ public class VulkanUtils {
     }
 
     public static VkQueue findFirstQueueByFamily(VkDevice logicalDevice, int familyIndex) {
-        try(MemoryStack stack = MemoryStack.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             PointerBuffer queuePointer = stack.mallocPointer(1);
             vkGetDeviceQueue(logicalDevice, familyIndex, 0, queuePointer);
             return new VkQueue(queuePointer.get(0), logicalDevice);
