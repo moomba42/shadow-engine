@@ -32,8 +32,7 @@ public class VulkanRenderer implements Disposable {
             throw new RuntimeException("Could not find a suitable physical device");
         }
     }
-
-
+    
     @Override
     public void dispose() {
         vkDestroyDevice(logicalDevice, null);

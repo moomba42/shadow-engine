@@ -24,7 +24,7 @@
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <flatlaf.version>3.3</flatlaf.version>
+        <flatlaf.version>3.4</flatlaf.version>
         <joml.version>1.10.5</joml.version>
         <lwjgl.version>3.3.3</lwjgl.version>
         <lwjgl-awt.version>0.2.0</lwjgl-awt.version>
