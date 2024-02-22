@@ -6,7 +6,6 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
@@ -15,14 +14,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import static org.lwjgl.glfw.GLFWVulkan.glfwCreateWindowSurface;
 import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
 import static org.lwjgl.system.MemoryUtil.NULL;
 import static org.lwjgl.system.MemoryUtil.memASCII;
 import static org.lwjgl.vulkan.EXTDebugReport.VK_ERROR_VALIDATION_FAILED_EXT;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.KHRDisplaySwapchain.VK_ERROR_INCOMPATIBLE_DISPLAY_KHR;
-import static org.lwjgl.vulkan.KHRSurface.VK_ERROR_NATIVE_WINDOW_IN_USE_KHR;
-import static org.lwjgl.vulkan.KHRSurface.VK_ERROR_SURFACE_LOST_KHR;
+import static org.lwjgl.vulkan.KHRSurface.*;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_ERROR_OUT_OF_DATE_KHR;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_SUBOPTIMAL_KHR;
 import static org.lwjgl.vulkan.VK10.*;
@@ -239,8 +238,27 @@ public class VulkanUtils {
                     return i;
                 }
             }
+            return -1;
         }
-        return -1;
+    }
+    static int findSurfaceSupportingQueueFamilyIndex(VkPhysicalDevice physicalDevice, long surface) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkQueueFamilyProperties.Buffer queueFamilies = getPhysicalDeviceQueueFamilyProperties(physicalDevice, stack);
+            for (int i = 0; i < queueFamilies.queueCount(); i++) {
+                VkQueueFamilyProperties queueFamily = queueFamilies.get(i);
+                if (queueFamily.queueCount() <= 0) {
+                    continue;
+                }
+
+                IntBuffer supportSurfacePointer = stack.mallocInt(1);
+                vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, supportSurfacePointer);
+
+                if(supportSurfacePointer.get(0) != 0) {
+                    return i;
+                }
+            }
+            return -1;
+        }
     }
 
     static VkInstance createInstance(String applicationName, boolean enableDebugging) {
@@ -262,16 +280,16 @@ public class VulkanUtils {
             HashSet<String> requiredExtensions = new HashSet<>(getAllGlfwExtensions());
             HashSet<String> availableExtensions = enumerateInstanceExtensionProperties(stack).stream().map(VkExtensionProperties::extensionNameString).collect(Collectors.toCollection(HashSet::new));
             for (String requiredExtension : requiredExtensions) {
-                if(!availableExtensions.contains(requiredExtension)) {
+                if (!availableExtensions.contains(requiredExtension)) {
                     throw new RuntimeException("Unsupported extension: " + requiredExtension);
                 }
             }
             // Required on macOS in later version of vulkan SDK
-            if(availableExtensions.contains(KHRPortabilityEnumeration.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
+            if (availableExtensions.contains(KHRPortabilityEnumeration.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
                 requiredExtensions.add(KHRPortabilityEnumeration.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
                 flags |= KHRPortabilityEnumeration.VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
             }
-            if(enableDebugging && availableExtensions.contains(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
+            if (enableDebugging && availableExtensions.contains(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
                 requiredExtensions.add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
             }
             PointerBuffer requiredExtensionsBuffer = stack.pointers(requiredExtensions.stream().map(stack::UTF8).toArray(ByteBuffer[]::new));
@@ -298,8 +316,16 @@ public class VulkanUtils {
         }
     }
 
+    public static long createSurface(VkInstance instance, long glfwWindowPointer) {
+        try(MemoryStack stack = MemoryStack.stackPush()){
+            LongBuffer surfacePointer = stack.mallocLong(1);
+            throwIfFailed(glfwCreateWindowSurface(instance, glfwWindowPointer, null, surfacePointer));
+            return surfacePointer.get(0);
+        }
+    }
+
     public static long createDebugMessenger(VkInstance instance) {
-        try(MemoryStack stack = MemoryStack.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = VkDebugUtilsMessengerCreateInfoEXT.malloc(stack)
                     .sType$Default()
                     .pNext(NULL)
@@ -342,20 +368,28 @@ public class VulkanUtils {
         return stack.pointers(requiredLayerNames.stream().map(stack::UTF8).toArray(ByteBuffer[]::new));
     }
 
-    public static VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice) {
+    public static VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, int graphicsQueueFamilyIndex, int surfaceSupportingQueueFamilyIndex) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            int graphicsQueueFamilyIndex = findGraphicsQueueFamilyLocation(physicalDevice);
-            FloatBuffer priorityPointer = stack.floats(1.0f);
-
             // Queues
-            VkDeviceQueueCreateInfo queueCreateInfo = VkDeviceQueueCreateInfo.malloc(stack)
+            List<VkDeviceQueueCreateInfo> queueCreateInfos = new ArrayList<>(1);
+            queueCreateInfos.add(VkDeviceQueueCreateInfo.malloc(stack)
                     .sType$Default()
                     .pNext(NULL)
                     .flags(0)
                     .queueFamilyIndex(graphicsQueueFamilyIndex)
-                    .pQueuePriorities(priorityPointer); // Also sets queueCount to the number of priorities
-            VkDeviceQueueCreateInfo.Buffer queueCreateInfos = VkDeviceQueueCreateInfo.malloc(1, stack);
-            queueCreateInfos.put(0, queueCreateInfo);
+                    .pQueuePriorities(stack.floats(1.0f)));
+            if (graphicsQueueFamilyIndex != surfaceSupportingQueueFamilyIndex) {
+                queueCreateInfos.add(VkDeviceQueueCreateInfo.malloc(stack)
+                        .sType$Default()
+                        .pNext(NULL)
+                        .flags(0)
+                        .queueFamilyIndex(graphicsQueueFamilyIndex)
+                        .pQueuePriorities(stack.floats(1.0f)));
+            }
+            VkDeviceQueueCreateInfo.Buffer queueCreateInfosBuffer = VkDeviceQueueCreateInfo.malloc(queueCreateInfos.size(), stack);
+            for (int i = 0; i < queueCreateInfos.size(); i++) {
+                queueCreateInfosBuffer.put(i, queueCreateInfos.get(i));
+            }
 
             // Features
             VkPhysicalDeviceFeatures deviceFeatures = VkPhysicalDeviceFeatures.calloc(stack);
@@ -367,7 +401,7 @@ public class VulkanUtils {
                     .collect(Collectors.toList());
             List<String> enabledExtensionNames = new ArrayList<>();
             for (String availableDeviceExtensionName : availableExtensionNames) {
-                if(Objects.equals(availableDeviceExtensionName, "VK_KHR_portability_subset")) {
+                if (Objects.equals(availableDeviceExtensionName, "VK_KHR_portability_subset")) {
                     enabledExtensionNames.add("VK_KHR_portability_subset");
                 }
             }
@@ -378,7 +412,7 @@ public class VulkanUtils {
                     .sType$Default()
                     .pNext(NULL)
                     .flags(0)
-                    .pQueueCreateInfos(queueCreateInfos) // Also sets queueCreateInfoCount
+                    .pQueueCreateInfos(queueCreateInfosBuffer) // Also sets queueCreateInfoCount
                     .ppEnabledLayerNames(null)
                     .ppEnabledExtensionNames(enabledExtensionNamesBuffer) // Also sets enabledExtensionCount
                     .pEnabledFeatures(deviceFeatures);
