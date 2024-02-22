@@ -206,10 +206,23 @@ public class VulkanUtils {
     }
 
     static boolean isSuitableDevice(VkPhysicalDevice physicalDevice, long surface) {
-        QueueIndices queueIndices = findQueueIndices(physicalDevice, surface);
-        return queueIndices.graphical() >= 0 &&
-               queueIndices.surfaceSupporting() >= 0 &&
-               deviceSupportsExtensions(physicalDevice, List.of(VK_KHR_SWAPCHAIN_EXTENSION_NAME));
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer surfaceFormatCountBuffer = stack.mallocInt(1);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, surfaceFormatCountBuffer, null);
+            int surfaceFormatCount = surfaceFormatCountBuffer.get(0);
+
+            IntBuffer presentationModeCountBuffer = stack.mallocInt(1);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, presentationModeCountBuffer, null);
+            int presentationModeCount = presentationModeCountBuffer.get(0);
+
+            QueueIndices queueIndices = findQueueIndices(physicalDevice, surface);
+
+            return queueIndices.graphical() >= 0 &&
+                   queueIndices.surfaceSupporting() >= 0 &&
+                   deviceSupportsExtensions(physicalDevice, List.of(VK_KHR_SWAPCHAIN_EXTENSION_NAME)) &&
+                   surfaceFormatCount > 0 &&
+                   presentationModeCount > 0;
+        }
     }
 
     static boolean deviceSupportsExtensions(VkPhysicalDevice physicalDevice, List<String> expectedExtensionNames) {
