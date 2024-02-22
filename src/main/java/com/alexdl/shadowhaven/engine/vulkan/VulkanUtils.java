@@ -22,8 +22,7 @@ import static org.lwjgl.vulkan.EXTDebugReport.VK_ERROR_VALIDATION_FAILED_EXT;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.KHRDisplaySwapchain.VK_ERROR_INCOMPATIBLE_DISPLAY_KHR;
 import static org.lwjgl.vulkan.KHRSurface.*;
-import static org.lwjgl.vulkan.KHRSwapchain.VK_ERROR_OUT_OF_DATE_KHR;
-import static org.lwjgl.vulkan.KHRSwapchain.VK_SUBOPTIMAL_KHR;
+import static org.lwjgl.vulkan.KHRSwapchain.*;
 import static org.lwjgl.vulkan.VK10.*;
 
 @SuppressWarnings("SameParameterValue")
@@ -43,7 +42,7 @@ public class VulkanUtils {
                 );
 
                 /*
-                 * false indicates that layer should not bail-out of an
+                 * false indicates that layer should not bail out of an
                  * API call that had validation failures. This may mean that the
                  * app dies inside the driver due to invalid parameter(s).
                  * That's what would happen without validation layers, so we'll
@@ -90,62 +89,44 @@ public class VulkanUtils {
     }
 
     public static String translateVulkanResult(int vulkanResultCode) {
-        switch (vulkanResultCode) {
+        return switch (vulkanResultCode) {
             // Success codes
-            case VK_SUCCESS:
-                return "Command successfully completed.";
-            case VK_NOT_READY:
-                return "A fence or query has not yet completed.";
-            case VK_TIMEOUT:
-                return "A wait operation has not completed in the specified time.";
-            case VK_EVENT_SET:
-                return "An event is signaled.";
-            case VK_EVENT_RESET:
-                return "An event is unsignaled.";
-            case VK_INCOMPLETE:
-                return "A return array was too small for the result.";
-            case VK_SUBOPTIMAL_KHR:
-                return "A swap chain no longer matches the surface properties exactly, but can still be used to present to the surface successfully.";
+            case VK_SUCCESS -> "Command successfully completed.";
+            case VK_NOT_READY -> "A fence or query has not yet completed.";
+            case VK_TIMEOUT -> "A wait operation has not completed in the specified time.";
+            case VK_EVENT_SET -> "An event is signaled.";
+            case VK_EVENT_RESET -> "An event is unsignaled.";
+            case VK_INCOMPLETE -> "A return array was too small for the result.";
+            case VK_SUBOPTIMAL_KHR ->
+                    "A swap chain no longer matches the surface properties exactly, but can still be used to present to the surface successfully.";
 
             // Error codes
-            case VK_ERROR_OUT_OF_HOST_MEMORY:
-                return "A host memory allocation has failed.";
-            case VK_ERROR_OUT_OF_DEVICE_MEMORY:
-                return "A device memory allocation has failed.";
-            case VK_ERROR_INITIALIZATION_FAILED:
-                return "Initialization of an object could not be completed for implementation-specific reasons.";
-            case VK_ERROR_DEVICE_LOST:
-                return "The logical or physical device has been lost.";
-            case VK_ERROR_MEMORY_MAP_FAILED:
-                return "Mapping of a memory object has failed.";
-            case VK_ERROR_LAYER_NOT_PRESENT:
-                return "A requested layer is not present or could not be loaded.";
-            case VK_ERROR_EXTENSION_NOT_PRESENT:
-                return "A requested extension is not supported.";
-            case VK_ERROR_FEATURE_NOT_PRESENT:
-                return "A requested feature is not supported.";
-            case VK_ERROR_INCOMPATIBLE_DRIVER:
-                return "The requested version of Vulkan is not supported by the driver or is otherwise incompatible for implementation-specific reasons.";
-            case VK_ERROR_TOO_MANY_OBJECTS:
-                return "Too many objects of the type have already been created.";
-            case VK_ERROR_FORMAT_NOT_SUPPORTED:
-                return "A requested format is not supported on this device.";
-            case VK_ERROR_SURFACE_LOST_KHR:
-                return "A surface is no longer available.";
-            case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR:
-                return "The requested window is already connected to a VkSurfaceKHR, or to some other non-Vulkan API.";
-            case VK_ERROR_OUT_OF_DATE_KHR:
-                return "A surface has changed in such a way that it is no longer compatible with the swapchain, and further presentation requests using the "
-                       + "swapchain will fail. Applications must query the new surface properties and recreate their swapchain if they wish to continue"
-                       + "presenting to the surface.";
-            case VK_ERROR_INCOMPATIBLE_DISPLAY_KHR:
-                return "The display used by a swapchain does not use the same presentable image layout, or is incompatible in a way that prevents sharing an"
-                       + " image.";
-            case VK_ERROR_VALIDATION_FAILED_EXT:
-                return "A validation layer found an error.";
-            default:
-                return "Unknown result code";
-        }
+            case VK_ERROR_OUT_OF_HOST_MEMORY -> "A host memory allocation has failed.";
+            case VK_ERROR_OUT_OF_DEVICE_MEMORY -> "A device memory allocation has failed.";
+            case VK_ERROR_INITIALIZATION_FAILED ->
+                    "Initialization of an object could not be completed for implementation-specific reasons.";
+            case VK_ERROR_DEVICE_LOST -> "The logical or physical device has been lost.";
+            case VK_ERROR_MEMORY_MAP_FAILED -> "Mapping of a memory object has failed.";
+            case VK_ERROR_LAYER_NOT_PRESENT -> "A requested layer is not present or could not be loaded.";
+            case VK_ERROR_EXTENSION_NOT_PRESENT -> "A requested extension is not supported.";
+            case VK_ERROR_FEATURE_NOT_PRESENT -> "A requested feature is not supported.";
+            case VK_ERROR_INCOMPATIBLE_DRIVER ->
+                    "The requested version of Vulkan is not supported by the driver or is otherwise incompatible for implementation-specific reasons.";
+            case VK_ERROR_TOO_MANY_OBJECTS -> "Too many objects of the type have already been created.";
+            case VK_ERROR_FORMAT_NOT_SUPPORTED -> "A requested format is not supported on this device.";
+            case VK_ERROR_SURFACE_LOST_KHR -> "A surface is no longer available.";
+            case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR ->
+                    "The requested window is already connected to a VkSurfaceKHR, or to some other non-Vulkan API.";
+            case VK_ERROR_OUT_OF_DATE_KHR ->
+                    "A surface has changed in such a way that it is no longer compatible with the swap chain, and further presentation requests using the "
+                    + "swap chain will fail. Applications must query the new surface properties and recreate their swap chain if they wish to continue"
+                    + "presenting to the surface.";
+            case VK_ERROR_INCOMPATIBLE_DISPLAY_KHR ->
+                    "The display used by a swap chain does not use the same presentable image layout, or is incompatible in a way that prevents sharing an"
+                    + " image.";
+            case VK_ERROR_VALIDATION_FAILED_EXT -> "A validation layer found an error.";
+            default -> "Unknown result code";
+        };
     }
 
     static PointerBuffer enumeratePhysicalDevices(VkInstance instance, MemoryStack stack) {
@@ -207,7 +188,7 @@ public class VulkanUtils {
         return glfwExtensions;
     }
 
-    static VkPhysicalDevice findFirstSuitablePhysicalDevice(VkInstance instance) {
+    static VkPhysicalDevice findFirstSuitablePhysicalDevice(VkInstance instance, long surface) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             PointerBuffer physicalDevices = enumeratePhysicalDevices(instance, stack);
             if (physicalDevices.limit() == 0) {
@@ -216,7 +197,7 @@ public class VulkanUtils {
 
             for (int i = 0; i < physicalDevices.limit(); i++) {
                 VkPhysicalDevice physicalDevice = new VkPhysicalDevice(physicalDevices.get(i), instance);
-                if (isSuitableDevice(physicalDevice)) {
+                if (isSuitableDevice(physicalDevice, surface)) {
                     return physicalDevice;
                 }
             }
@@ -224,40 +205,57 @@ public class VulkanUtils {
         return null;
     }
 
-    static boolean isSuitableDevice(VkPhysicalDevice physicalDevice) {
-        int graphicsQueueFamilyLocation = findGraphicsQueueFamilyLocation(physicalDevice);
-        return graphicsQueueFamilyLocation >= 0;
+    static boolean isSuitableDevice(VkPhysicalDevice physicalDevice, long surface) {
+        QueueIndices queueIndices = findQueueIndices(physicalDevice, surface);
+        return queueIndices.graphical() >= 0 &&
+               queueIndices.surfaceSupporting() >= 0 &&
+               deviceSupportsExtensions(physicalDevice, List.of(VK_KHR_SWAPCHAIN_EXTENSION_NAME));
     }
 
-    static int findGraphicsQueueFamilyLocation(VkPhysicalDevice physicalDevice) {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkQueueFamilyProperties.Buffer queueFamilies = getPhysicalDeviceQueueFamilyProperties(physicalDevice, stack);
-            for (int i = 0; i < queueFamilies.queueCount(); i++) {
-                VkQueueFamilyProperties queueFamily = queueFamilies.get(i);
-                if (queueFamily.queueCount() > 0 && (queueFamily.queueFlags() & VK_QUEUE_GRAPHICS_BIT) != 0) {
-                    return i;
+    static boolean deviceSupportsExtensions(VkPhysicalDevice physicalDevice, List<String> expectedExtensionNames) {
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            VkExtensionProperties.Buffer availableExtensionsBuffer = enumerateDeviceExtensionProperties(physicalDevice, stack);
+            for (String expectedExtensionName : expectedExtensionNames) {
+                boolean isSupported = false;
+                for (VkExtensionProperties availableExtensionProperty : availableExtensionsBuffer) {
+                    if(availableExtensionProperty.extensionNameString().equals(expectedExtensionName)) {
+                        isSupported = true;
+                    }
+                }
+                if(!isSupported) {
+                    return false;
                 }
             }
-            return -1;
+            return true;
         }
     }
-    static int findSurfaceSupportingQueueFamilyIndex(VkPhysicalDevice physicalDevice, long surface) {
+
+    static QueueIndices findQueueIndices(VkPhysicalDevice physicalDevice, long surface) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkQueueFamilyProperties.Buffer queueFamilies = getPhysicalDeviceQueueFamilyProperties(physicalDevice, stack);
+            List<Integer> graphicalQueueIndices = new ArrayList<>(1);
+            List<Integer> surfaceSupportingQueueIndices = new ArrayList<>(1);
             for (int i = 0; i < queueFamilies.queueCount(); i++) {
                 VkQueueFamilyProperties queueFamily = queueFamilies.get(i);
                 if (queueFamily.queueCount() <= 0) {
                     continue;
                 }
 
+                if (queueFamily.queueCount() > 0 && (queueFamily.queueFlags() & VK_QUEUE_GRAPHICS_BIT) != 0) {
+                    graphicalQueueIndices.add(i);
+                }
+
                 IntBuffer supportSurfacePointer = stack.mallocInt(1);
                 vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, supportSurfacePointer);
 
                 if(supportSurfacePointer.get(0) != 0) {
-                    return i;
+                    surfaceSupportingQueueIndices.add(i);
                 }
             }
-            return -1;
+            return new QueueIndices(
+                    graphicalQueueIndices.isEmpty() ? -1 : graphicalQueueIndices.getFirst(),
+                    surfaceSupportingQueueIndices.isEmpty() ? -1 : surfaceSupportingQueueIndices.getFirst()
+            );
         }
     }
 
@@ -351,7 +349,7 @@ public class VulkanUtils {
 
     private static PointerBuffer allocateAndValidateLayerList(List<String> requiredLayerNames, MemoryStack stack) {
         VkLayerProperties.Buffer availableLayersBuffer = enumerateInstanceLayerProperties(stack);
-        List<String> availableLayerNames = availableLayersBuffer.stream().map(VkLayerProperties::layerNameString).collect(Collectors.toList());
+        List<String> availableLayerNames = availableLayersBuffer.stream().map(VkLayerProperties::layerNameString).toList();
         for (String requiredLayerName : requiredLayerNames) {
             boolean found = false;
             for (String availableLayerName : availableLayerNames) {
@@ -368,22 +366,23 @@ public class VulkanUtils {
         return stack.pointers(requiredLayerNames.stream().map(stack::UTF8).toArray(ByteBuffer[]::new));
     }
 
-    public static VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, int graphicsQueueFamilyIndex, int surfaceSupportingQueueFamilyIndex) {
+    public static VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, long surface) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
+            QueueIndices queueIndices = findQueueIndices(physicalDevice, surface);
             // Queues
             List<VkDeviceQueueCreateInfo> queueCreateInfos = new ArrayList<>(1);
             queueCreateInfos.add(VkDeviceQueueCreateInfo.malloc(stack)
                     .sType$Default()
                     .pNext(NULL)
                     .flags(0)
-                    .queueFamilyIndex(graphicsQueueFamilyIndex)
+                    .queueFamilyIndex(queueIndices.graphical())
                     .pQueuePriorities(stack.floats(1.0f)));
-            if (graphicsQueueFamilyIndex != surfaceSupportingQueueFamilyIndex) {
+            if (queueIndices.graphical() != queueIndices.surfaceSupporting()) {
                 queueCreateInfos.add(VkDeviceQueueCreateInfo.malloc(stack)
                         .sType$Default()
                         .pNext(NULL)
                         .flags(0)
-                        .queueFamilyIndex(graphicsQueueFamilyIndex)
+                        .queueFamilyIndex(queueIndices.surfaceSupporting())
                         .pQueuePriorities(stack.floats(1.0f)));
             }
             VkDeviceQueueCreateInfo.Buffer queueCreateInfosBuffer = VkDeviceQueueCreateInfo.malloc(queueCreateInfos.size(), stack);
@@ -398,14 +397,15 @@ public class VulkanUtils {
             VkExtensionProperties.Buffer availableExtensions = enumerateDeviceExtensionProperties(physicalDevice, stack);
             List<String> availableExtensionNames = availableExtensions.stream()
                     .map(VkExtensionProperties::extensionNameString)
-                    .collect(Collectors.toList());
-            List<String> enabledExtensionNames = new ArrayList<>();
+                    .toList();
+            List<String> requiredExtensionNames = new ArrayList<>();
+            requiredExtensionNames.add(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
             for (String availableDeviceExtensionName : availableExtensionNames) {
                 if (Objects.equals(availableDeviceExtensionName, "VK_KHR_portability_subset")) {
-                    enabledExtensionNames.add("VK_KHR_portability_subset");
+                    requiredExtensionNames.add("VK_KHR_portability_subset");
                 }
             }
-            PointerBuffer enabledExtensionNamesBuffer = stack.pointers(enabledExtensionNames.stream().map(stack::UTF8).toArray(ByteBuffer[]::new));
+            PointerBuffer requiredExtensionNamesBuffer = stack.pointers(requiredExtensionNames.stream().map(stack::UTF8).toArray(ByteBuffer[]::new));
 
             // Create
             VkDeviceCreateInfo deviceCreateInfo = VkDeviceCreateInfo.malloc(stack)
@@ -414,7 +414,7 @@ public class VulkanUtils {
                     .flags(0)
                     .pQueueCreateInfos(queueCreateInfosBuffer) // Also sets queueCreateInfoCount
                     .ppEnabledLayerNames(null)
-                    .ppEnabledExtensionNames(enabledExtensionNamesBuffer) // Also sets enabledExtensionCount
+                    .ppEnabledExtensionNames(requiredExtensionNamesBuffer) // Also sets enabledExtensionCount
                     .pEnabledFeatures(deviceFeatures);
 
             PointerBuffer logicalDevicePointer = stack.mallocPointer(1);

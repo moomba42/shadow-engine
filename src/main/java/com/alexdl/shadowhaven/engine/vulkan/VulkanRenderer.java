@@ -17,8 +17,6 @@ public class VulkanRenderer implements Disposable {
     private final VkInstance instance;
     private final long surface;
     private final VkPhysicalDevice physicalDevice;
-    private final int graphicsQueueFamilyIndex;
-    private final int surfaceSupportingQueueFamilyIndex;
     private final VkDevice logicalDevice;
     private final VkQueue graphicsQueue;
     private final VkQueue surfaceSupportingQueue;
@@ -30,23 +28,15 @@ public class VulkanRenderer implements Disposable {
         surface = createSurface(instance, glfwWindowPointer);
         debugMessengerPointer = enableDebugging ? VulkanUtils.createDebugMessenger(instance) : null;
 
-        physicalDevice = findFirstSuitablePhysicalDevice(instance);
+        physicalDevice = findFirstSuitablePhysicalDevice(instance, surface);
         if (physicalDevice == null) {
             throw new RuntimeException("Could not find a suitable physical device");
         }
 
-        graphicsQueueFamilyIndex = findGraphicsQueueFamilyLocation(physicalDevice);
-        if(graphicsQueueFamilyIndex < 0) {
-            throw new RuntimeException("Could not find a graphics queue");
-        }
-        surfaceSupportingQueueFamilyIndex = findSurfaceSupportingQueueFamilyIndex(physicalDevice, surface);
-        if(surfaceSupportingQueueFamilyIndex < 0) {
-            throw new RuntimeException("Could not find a queue supporting the given surface");
-        }
-
-        logicalDevice = createLogicalDevice(physicalDevice, graphicsQueueFamilyIndex, surfaceSupportingQueueFamilyIndex);
-        graphicsQueue = findFirstQueueByFamily(logicalDevice, graphicsQueueFamilyIndex);
-        surfaceSupportingQueue = findFirstQueueByFamily(logicalDevice, surfaceSupportingQueueFamilyIndex);
+        logicalDevice = createLogicalDevice(physicalDevice, surface);
+        QueueIndices queueIndices = findQueueIndices(physicalDevice, surface);
+        graphicsQueue = findFirstQueueByFamily(logicalDevice, queueIndices.graphical());
+        surfaceSupportingQueue = findFirstQueueByFamily(logicalDevice, queueIndices.surfaceSupporting());
     }
     
     @Override
