@@ -12,16 +12,16 @@ public class VulkanTest {
 
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        long window = glfwCreateWindow(800, 600, "Vulkan Test", 0, 0);
+        GlfwWindow window = new GlfwWindow(glfwCreateWindow(800, 600, "Vulkan Test", 0, 0));
 
         VulkanRenderer renderer = new VulkanRenderer(window, enableDebugging);
 
-        while(!glfwWindowShouldClose(window)) {
+        while(!glfwWindowShouldClose(window.address())) {
             glfwPollEvents();
         }
 
         renderer.dispose();
-        glfwDestroyWindow(window);
+        glfwDestroyWindow(window.address());
         glfwTerminate();
     }
 }

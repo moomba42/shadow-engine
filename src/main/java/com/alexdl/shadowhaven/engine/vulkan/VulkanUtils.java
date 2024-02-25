@@ -1,6 +1,7 @@
 package com.alexdl.shadowhaven.engine.vulkan;
 
 import com.alexdl.shadowhaven.engine.GLFWRuntimeException;
+import com.alexdl.shadowhaven.engine.GlfwWindow;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
@@ -188,7 +189,7 @@ public class VulkanUtils {
         return glfwExtensions;
     }
 
-    static VkPhysicalDevice findFirstSuitablePhysicalDevice(VkInstance instance, long surface) {
+    static VkPhysicalDevice findFirstSuitablePhysicalDevice(VkInstance instance, VkSurface surface) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             PointerBuffer physicalDevices = enumeratePhysicalDevices(instance, stack);
             if (physicalDevices.limit() == 0) {
@@ -205,14 +206,14 @@ public class VulkanUtils {
         return null;
     }
 
-    static boolean isSuitableDevice(VkPhysicalDevice physicalDevice, long surface) {
+    static boolean isSuitableDevice(VkPhysicalDevice physicalDevice, VkSurface surface) {
         try(MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer surfaceFormatCountBuffer = stack.mallocInt(1);
-            vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, surfaceFormatCountBuffer, null);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface.address(), surfaceFormatCountBuffer, null);
             int surfaceFormatCount = surfaceFormatCountBuffer.get(0);
 
             IntBuffer presentationModeCountBuffer = stack.mallocInt(1);
-            vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, presentationModeCountBuffer, null);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface.address(), presentationModeCountBuffer, null);
             int presentationModeCount = presentationModeCountBuffer.get(0);
 
             QueueIndices queueIndices = findQueueIndices(physicalDevice, surface);
@@ -243,7 +244,7 @@ public class VulkanUtils {
         }
     }
 
-    static QueueIndices findQueueIndices(VkPhysicalDevice physicalDevice, long surface) {
+    static QueueIndices findQueueIndices(VkPhysicalDevice physicalDevice, VkSurface surface) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkQueueFamilyProperties.Buffer queueFamilies = getPhysicalDeviceQueueFamilyProperties(physicalDevice, stack);
             List<Integer> graphicalQueueIndices = new ArrayList<>(1);
@@ -259,7 +260,7 @@ public class VulkanUtils {
                 }
 
                 IntBuffer supportSurfacePointer = stack.mallocInt(1);
-                vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, supportSurfacePointer);
+                vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface.address(), supportSurfacePointer);
 
                 if(supportSurfacePointer.get(0) != 0) {
                     surfaceSupportingQueueIndices.add(i);
@@ -327,11 +328,11 @@ public class VulkanUtils {
         }
     }
 
-    public static long createSurface(VkInstance instance, long glfwWindowPointer) {
+    public static VkSurface createSurface(VkInstance instance, GlfwWindow window) {
         try(MemoryStack stack = MemoryStack.stackPush()){
             LongBuffer surfacePointer = stack.mallocLong(1);
-            throwIfFailed(glfwCreateWindowSurface(instance, glfwWindowPointer, null, surfacePointer));
-            return surfacePointer.get(0);
+            throwIfFailed(glfwCreateWindowSurface(instance, window.address(), null, surfacePointer));
+            return new VkSurface(surfacePointer.get(0));
         }
     }
 
@@ -379,7 +380,7 @@ public class VulkanUtils {
         return stack.pointers(requiredLayerNames.stream().map(stack::UTF8).toArray(ByteBuffer[]::new));
     }
 
-    public static VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, long surface) {
+    public static VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurface surface) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             QueueIndices queueIndices = findQueueIndices(physicalDevice, surface);
             // Queues

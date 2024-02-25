@@ -1,6 +1,7 @@
 package com.alexdl.shadowhaven.engine.vulkan;
 
 import com.alexdl.shadowhaven.engine.Disposable;
+import com.alexdl.shadowhaven.engine.GlfwWindow;
 import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkInstance;
 import org.lwjgl.vulkan.VkPhysicalDevice;
@@ -13,19 +14,19 @@ import static org.lwjgl.vulkan.VK10.vkDestroyDevice;
 import static org.lwjgl.vulkan.VK10.vkDestroyInstance;
 
 public class VulkanRenderer implements Disposable {
-    private final long glfwWindowPointer;
+    private final GlfwWindow window;
     private final VkInstance instance;
-    private final long surface;
+    private final VkSurface surface;
     private final VkPhysicalDevice physicalDevice;
     private final VkDevice logicalDevice;
     private final VkQueue graphicsQueue;
     private final VkQueue surfaceSupportingQueue;
     private final Long debugMessengerPointer;
 
-    public VulkanRenderer(long glfwWindowPointer, boolean enableDebugging) {
-        this.glfwWindowPointer = glfwWindowPointer;
+    public VulkanRenderer(GlfwWindow window, boolean enableDebugging) {
+        this.window = window;
         instance = createInstance("Vulkan Test App", enableDebugging);
-        surface = createSurface(instance, glfwWindowPointer);
+        surface = createSurface(instance, window);
         debugMessengerPointer = enableDebugging ? VulkanUtils.createDebugMessenger(instance) : null;
 
         physicalDevice = findFirstSuitablePhysicalDevice(instance, surface);
@@ -41,7 +42,7 @@ public class VulkanRenderer implements Disposable {
     
     @Override
     public void dispose() {
-        vkDestroySurfaceKHR(instance, surface, null);
+        vkDestroySurfaceKHR(instance, surface.address(), null);
         vkDestroyDevice(logicalDevice, null);
         if(debugMessengerPointer != null) {
             vkDestroyDebugUtilsMessengerEXT(instance, debugMessengerPointer, null);
