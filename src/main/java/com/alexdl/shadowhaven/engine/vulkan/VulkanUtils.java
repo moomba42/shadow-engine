@@ -2,6 +2,7 @@ package com.alexdl.shadowhaven.engine.vulkan;
 
 import com.alexdl.shadowhaven.engine.GLFWRuntimeException;
 import com.alexdl.shadowhaven.engine.GlfwWindow;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
@@ -10,6 +11,8 @@ import org.lwjgl.vulkan.enums.VkFormat;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 import org.lwjgl.vulkan.enums.VkSharingMode;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
@@ -537,10 +540,11 @@ public class VulkanUtils {
                         .height(Math.clamp(heightPointer.get(0), min.height(), max.height()));
             }
 
+            //noinspection resource
             return new SwapchainImageConfig(
                     bestFormat,
                     bestColorSpace,
-                    bestResolution
+                    VkExtent2D.malloc().set(bestResolution)
             );
         }
     }
@@ -569,7 +573,6 @@ public class VulkanUtils {
 
             VkSwapchainCreateInfoKHR swapchainCreateInfo = VkSwapchainCreateInfoKHR.calloc(stack)
                     .sType$Default()
-                    .pNext(NULL)
                     .surface(surface.address())
                     .minImageCount(minImageCount)
                     .imageFormat(swapchainImageConfig.format().getValue())
@@ -601,7 +604,7 @@ public class VulkanUtils {
     }
 
     static VkImageView createImageView(VkDevice logicalDevice, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
-        try(MemoryStack stack = MemoryStack.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             VkImageViewCreateInfo imageViewCreateInfo = VkImageViewCreateInfo.malloc(stack)
                     .sType$Default()
                     .pNext(NULL)
@@ -623,6 +626,247 @@ public class VulkanUtils {
             LongBuffer imageViewPointer = stack.mallocLong(1);
             throwIfFailed(vkCreateImageView(logicalDevice, imageViewCreateInfo, null, imageViewPointer));
             return new VkImageView(imageViewPointer.get(0));
+        }
+    }
+
+    static VkPipelineLayout createPipelineLayout(VkDevice logicalDevice) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VkPipelineLayoutCreateInfo.malloc(stack)
+                    .sType$Default()
+                    .pNext(NULL)
+                    .flags(0)
+                    .setLayoutCount(0)
+                    .pSetLayouts(null)
+                    .pPushConstantRanges(null);
+
+            LongBuffer pipelineLayoutPointer = stack.mallocLong(1);
+            throwIfFailed(vkCreatePipelineLayout(logicalDevice, pipelineLayoutCreateInfo, null, pipelineLayoutPointer));
+            return new VkPipelineLayout(pipelineLayoutPointer.get(0));
+        }
+    }
+
+    static VkRenderPass createRenderPass(VkDevice logicalDevice, VkFormat format) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkAttachmentDescription.Buffer attachments = VkAttachmentDescription.malloc(1, stack)
+                    // Color Attachment
+                    .flags(0)
+                    .format(format.getValue())
+                    .samples(VK_SAMPLE_COUNT_1_BIT)
+                    .loadOp(VK_ATTACHMENT_LOAD_OP_CLEAR)
+                    .storeOp(VK_ATTACHMENT_STORE_OP_STORE)
+                    .stencilLoadOp(VK_ATTACHMENT_LOAD_OP_DONT_CARE)
+                    .stencilStoreOp(VK_ATTACHMENT_STORE_OP_DONT_CARE)
+                    .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+                    .finalLayout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+
+            VkAttachmentReference.Buffer attachmentReferences = VkAttachmentReference.malloc(1, stack)
+                    // Color Attachment Reference
+                    .attachment(0) // The index in the list that we pass to VkRenderPassCreateInfo.pAttachments
+                    .layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+            VkSubpassDescription.Buffer subpasses = VkSubpassDescription.malloc(1, stack)
+                    // Subpass 1
+                    .pipelineBindPoint(VK_PIPELINE_BIND_POINT_GRAPHICS)
+                    .colorAttachmentCount(1)
+                    .pColorAttachments(attachmentReferences)
+                    .pInputAttachments(null)
+                    .pResolveAttachments(null)
+                    .pDepthStencilAttachment(null)
+                    .pPreserveAttachments(null);
+
+            // We need to determine when layout transitions occur using subpass dependencies
+            VkSubpassDependency.Buffer dependencies = VkSubpassDependency.malloc(2, stack);
+            // Conversion from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+            // Start converting after the external pipeline has completely finished and the reading has stopped there
+            // End converting before we reach the color attachment output stage, before we read or write anything in that stage.
+            dependencies.put(0, VkSubpassDependency.malloc(stack)
+                    .srcSubpass(VK_SUBPASS_EXTERNAL)
+                    .srcStageMask(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT)
+                    .srcAccessMask(VK_ACCESS_MEMORY_READ_BIT)
+
+                    .dstSubpass(0) // id of the subpass that we pass into the VkRenderPassCreateInfo.pSubpasses
+                    .dstStageMask(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
+                    .dstAccessMask(VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)
+
+                    .dependencyFlags(0));
+            dependencies.put(1, VkSubpassDependency.malloc(stack)
+                    .srcSubpass(0)
+                    .srcStageMask(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
+                    .srcAccessMask(VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)
+
+                    .dstSubpass(VK_SUBPASS_EXTERNAL) // id of the subpass that we pass into the VkRenderPassCreateInfo.pSubpasses
+                    .dstStageMask(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT)
+                    .dstAccessMask(VK_ACCESS_MEMORY_READ_BIT)
+
+                    .dependencyFlags(0));
+
+            VkRenderPassCreateInfo renderPassCreateInfo = VkRenderPassCreateInfo.malloc(stack)
+                    .sType$Default()
+                    .pNext(NULL)
+                    .flags(0)
+                    .pAttachments(attachments)
+                    .pSubpasses(subpasses)
+                    .pDependencies(dependencies);
+
+            LongBuffer renderPassPointer = stack.mallocLong(1);
+            throwIfFailed(vkCreateRenderPass(logicalDevice, renderPassCreateInfo, null, renderPassPointer));
+            return new VkRenderPass(renderPassPointer.get(0));
+        }
+    }
+
+    static VkShaderModule createShaderModule(VkDevice logicalDevice, ByteBuffer code) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkShaderModuleCreateInfo shaderModuleCreateInfo = VkShaderModuleCreateInfo.malloc(stack)
+                    .sType$Default()
+                    .pNext(NULL)
+                    .flags(0)
+                    .pCode(code);
+
+            LongBuffer shaderModulePointer = stack.mallocLong(1);
+            throwIfFailed(vkCreateShaderModule(logicalDevice, shaderModuleCreateInfo, null, shaderModulePointer));
+            return new VkShaderModule(shaderModulePointer.get(0));
+        }
+    }
+
+    static VkPipeline createGraphicsPipeline(VkDevice logicalDevice, VkExtent2D extent, VkPipelineLayout pipelineLayout, VkRenderPass renderPass) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            ByteBuffer vertexShader = readBinaryResource("shaders/vert.spv");
+            ByteBuffer fragmentShader = readBinaryResource("shaders/frag.spv");
+
+            VkShaderModule vertexShaderModule = createShaderModule(logicalDevice, vertexShader);
+            VkShaderModule fragmentShaderModule = createShaderModule(logicalDevice, fragmentShader);
+
+
+            VkPipelineShaderStageCreateInfo.Buffer shaderStages = VkPipelineShaderStageCreateInfo.calloc(2, stack);
+            ByteBuffer main = stack.UTF8("main");
+            // Vertex shader stage
+            //noinspection resource
+            shaderStages.get(0)
+                    .sType$Default()
+                    .stage(VK_SHADER_STAGE_VERTEX_BIT)
+                    .module(vertexShaderModule.address())
+                    .pName(main);
+            // Fragment shader stage
+            //noinspection resource
+            shaderStages.get(1)
+                    .sType$Default()
+                    .stage(VK_SHADER_STAGE_FRAGMENT_BIT)
+                    .module(fragmentShaderModule.address())
+                    .pName(main);
+
+            VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = VkPipelineVertexInputStateCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .pVertexBindingDescriptions(null)
+                    .pVertexAttributeDescriptions(null);
+
+            VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = VkPipelineInputAssemblyStateCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                    .primitiveRestartEnable(false);
+
+            VkViewport.Buffer viewports = VkViewport.calloc(1, stack);
+            //noinspection resource
+            viewports.get(0)
+                    .x(0)
+                    .y(0)
+                    .width(extent.width())
+                    .height(extent.height())
+                    .minDepth(0)
+                    .maxDepth(1);
+
+            VkRect2D.Buffer scissors = VkRect2D.calloc(1, stack);
+            scissors.get(0)
+                    .offset(VkOffset2D.malloc(stack).set(0, 0))
+                    .extent(extent);
+
+            VkPipelineViewportStateCreateInfo viewportStateCreateInfo = VkPipelineViewportStateCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .viewportCount(viewports.limit())
+                    .pViewports(viewports)
+                    .scissorCount(scissors.limit())
+                    .pScissors(scissors);
+
+            VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo = VkPipelineRasterizationStateCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .depthClampEnable(false)
+                    .rasterizerDiscardEnable(false)
+                    .polygonMode(VK_POLYGON_MODE_FILL)
+                    .cullMode(VK_CULL_MODE_BACK_BIT)
+                    .frontFace(VK_FRONT_FACE_CLOCKWISE)
+                    .depthBiasEnable(false)
+                    .lineWidth(1);
+
+            VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = VkPipelineMultisampleStateCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .rasterizationSamples(VK_SAMPLE_COUNT_1_BIT)
+                    .sampleShadingEnable(false)
+                    .minSampleShading(0)
+                    .pSampleMask(null)
+                    .alphaToCoverageEnable(false)
+                    .alphaToOneEnable(false);
+
+            VkPipelineColorBlendAttachmentState.Buffer colorBlendAttachmentState = VkPipelineColorBlendAttachmentState.calloc(1, stack)
+                    .blendEnable(true)
+                    .srcColorBlendFactor(VK_BLEND_FACTOR_SRC_ALPHA)
+                    .dstColorBlendFactor(VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
+                    .colorBlendOp(VK_BLEND_OP_ADD)
+                    .srcAlphaBlendFactor(VK_BLEND_FACTOR_ONE)
+                    .dstAlphaBlendFactor(VK_BLEND_FACTOR_ZERO)
+                    .alphaBlendOp(VK_BLEND_OP_ADD)
+                    .colorWriteMask(VK_COLOR_COMPONENT_R_BIT |
+                                    VK_COLOR_COMPONENT_G_BIT |
+                                    VK_COLOR_COMPONENT_B_BIT |
+                                    VK_COLOR_COMPONENT_A_BIT);
+
+            VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = VkPipelineColorBlendStateCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .logicOpEnable(false)
+                    .attachmentCount(1)
+                    .pAttachments(colorBlendAttachmentState);
+
+            VkGraphicsPipelineCreateInfo.Buffer graphicsPipelineCreateInfos = VkGraphicsPipelineCreateInfo.calloc(1, stack);
+            //noinspection resource
+            graphicsPipelineCreateInfos.get(0)
+                    .sType$Default()
+                    .stageCount(2)
+                    .pStages(shaderStages)
+                    .pVertexInputState(vertexInputStateCreateInfo)
+                    .pInputAssemblyState(inputAssemblyStateCreateInfo)
+                    .pViewportState(viewportStateCreateInfo)
+                    .pRasterizationState(rasterizationStateCreateInfo)
+                    .pMultisampleState(multisampleStateCreateInfo)
+                    .pDepthStencilState(null)
+                    .pColorBlendState(colorBlendStateCreateInfo)
+                    .pDynamicState(null)
+                    .layout(pipelineLayout.address())
+                    .renderPass(renderPass.address())
+                    .subpass(0)
+                    .basePipelineHandle(VK_NULL_HANDLE)
+                    .basePipelineIndex(-1);
+
+            LongBuffer graphicsPipelinePointer = stack.mallocLong(1);
+            throwIfFailed(vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, graphicsPipelineCreateInfos, null, graphicsPipelinePointer));
+
+            vkDestroyShaderModule(logicalDevice, fragmentShaderModule.address(), null);
+            vkDestroyShaderModule(logicalDevice, vertexShaderModule.address(), null);
+
+            return new VkPipeline(graphicsPipelinePointer.get(0));
+        }
+    }
+
+    static ByteBuffer readBinaryResource(String resourcePath) {
+        try (InputStream inputStream = VulkanUtils.class.getClassLoader().getResourceAsStream(resourcePath)) {
+            if (inputStream == null) {
+                throw new RuntimeException("Could not read file");
+            }
+            byte[] bytes = inputStream.readAllBytes();
+            ByteBuffer buffer = BufferUtils.createByteBuffer(bytes.length).put(bytes);
+            buffer.flip();
+            buffer.rewind();
+            return buffer;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 }
