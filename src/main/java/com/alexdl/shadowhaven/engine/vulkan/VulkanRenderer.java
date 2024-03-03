@@ -2,16 +2,8 @@ package com.alexdl.shadowhaven.engine.vulkan;
 
 import com.alexdl.shadowhaven.engine.Disposable;
 import com.alexdl.shadowhaven.engine.GlfwWindow;
-import org.lwjgl.vulkan.VkPipeline;
-import org.lwjgl.vulkan.VkPipelineLayout;
-import org.lwjgl.vulkan.VkRenderPass;
-import org.lwjgl.vulkan.VkSurfaceKHR;
-import org.lwjgl.vulkan.VkSwapchainKHR;
+import org.lwjgl.vulkan.*;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
-import org.lwjgl.vulkan.VkDevice;
-import org.lwjgl.vulkan.VkInstance;
-import org.lwjgl.vulkan.VkPhysicalDevice;
-import org.lwjgl.vulkan.VkQueue;
 
 import java.util.List;
 
@@ -39,7 +31,11 @@ public class VulkanRenderer implements Disposable {
     private final VkQueue surfaceSupportingQueue;
     private final VkPipelineLayout pipelineLayout;
     private final VkRenderPass renderPass;
-    private final VkPipeline pipeline;
+    private final VkPipeline graphicsPipeline;
+
+    private final List<VkFramebuffer> framebuffers;
+    private final VkCommandPool commandPool;
+    private final List<VkCommandBuffer> commandBuffers;
 
     public VulkanRenderer(GlfwWindow window, boolean enableDebugging) {
         this.window = window;
@@ -61,13 +57,22 @@ public class VulkanRenderer implements Disposable {
 
         pipelineLayout = createPipelineLayout(logicalDevice);
         renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format());
-        pipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
+        graphicsPipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
+
+        framebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages);
+        commandPool = createCommandPool(logicalDevice, queueIndices.graphical());
+        commandBuffers = createCommandBuffers(logicalDevice, commandPool, framebuffers);
+        recordCommands(renderPass, swapchainImageConfig.extent(), graphicsPipeline, commandBuffers, framebuffers);
     }
 
     @Override
     public void dispose() {
+        vkDestroyCommandPool(logicalDevice, commandPool.address(), null);
+        for (VkFramebuffer framebuffer : framebuffers) {
+            vkDestroyFramebuffer(logicalDevice, framebuffer.address(), null);
+        }
         swapchainImageConfig.dispose();
-        vkDestroyPipeline(logicalDevice, pipeline.address(), null);
+        vkDestroyPipeline(logicalDevice, graphicsPipeline.address(), null);
         vkDestroyPipelineLayout(logicalDevice, pipelineLayout.address(), null);
         vkDestroyRenderPass(logicalDevice, renderPass.address(), null);
         for (SwapchainImage swapchainImage : swapchainImages) {

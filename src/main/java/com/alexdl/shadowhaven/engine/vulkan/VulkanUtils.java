@@ -869,4 +869,92 @@ public class VulkanUtils {
             throw new RuntimeException(e);
         }
     }
+
+    static List<VkFramebuffer> createFramebuffers(VkDevice logicalDevice, VkRenderPass renderPass, SwapchainImageConfig imageConfig, List<SwapchainImage> swapchainImages) {
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            List<VkFramebuffer> framebuffers = new ArrayList<>(swapchainImages.size());
+            for (int i = 0; i < swapchainImages.size(); i++) {
+                LongBuffer attachments = stack.longs(swapchainImages.get(i).view().address());
+                VkFramebufferCreateInfo framebufferCreateInfo = VkFramebufferCreateInfo.calloc(stack)
+                        .sType$Default()
+                        .renderPass(renderPass.address())
+                        .pAttachments(attachments)
+                        .width(imageConfig.extent().width())
+                        .height(imageConfig.extent().height())
+                        .layers(1);
+
+                LongBuffer framebufferPointer = stack.mallocLong(1);
+                throwIfFailed(vkCreateFramebuffer(logicalDevice, framebufferCreateInfo, null, framebufferPointer));
+
+                framebuffers.add(i, new VkFramebuffer(framebufferPointer.get(0)));
+            }
+
+            return framebuffers;
+        }
+    }
+
+    static VkCommandPool createCommandPool(VkDevice logicalDevice, int queueFamilyIndex) {
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            VkCommandPoolCreateInfo commandPoolCreateInfo = VkCommandPoolCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .queueFamilyIndex(queueFamilyIndex);
+            LongBuffer commandPoolPointer = stack.mallocLong(1);
+            throwIfFailed(vkCreateCommandPool(logicalDevice, commandPoolCreateInfo, null, commandPoolPointer));
+            return new VkCommandPool(commandPoolPointer.get(0));
+        }
+    }
+
+    static List<VkCommandBuffer> createCommandBuffers(VkDevice logicalDevice, VkCommandPool commandPool, List<VkFramebuffer> framebuffers) {
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer commandBufferPointers = stack.mallocPointer(framebuffers.size());
+
+            VkCommandBufferAllocateInfo commandBufferAllocateInfo = VkCommandBufferAllocateInfo.calloc(stack)
+                    .sType$Default()
+                    .commandPool(commandPool.address())
+                    .level(VK_COMMAND_BUFFER_LEVEL_PRIMARY) // the secondary level is used to indicate that this buffer can only be run from another buffer (basically you can record a command to run a buffer of commands).
+                    .commandBufferCount(framebuffers.size());
+
+            throwIfFailed(vkAllocateCommandBuffers(logicalDevice, commandBufferAllocateInfo, commandBufferPointers));
+
+            List<VkCommandBuffer> commandBuffers = new ArrayList<>(commandBufferPointers.limit());
+            for (int i = 0; i < commandBufferPointers.limit(); i++) {
+                commandBuffers.add(i, new VkCommandBuffer(commandBufferPointers.get(i), logicalDevice));
+            }
+
+            return commandBuffers;
+        }
+    }
+
+    static void recordCommands(VkRenderPass renderPass, VkExtent2D extent, VkPipeline graphicsPipeline, List<VkCommandBuffer> commandBuffers, List<VkFramebuffer> framebuffers) {
+        try(MemoryStack stack = MemoryStack.stackPush()) {
+            VkCommandBufferBeginInfo commandBufferBeginInfo = VkCommandBufferBeginInfo.calloc(stack)
+                    .sType$Default()
+                    .flags(VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT);
+
+            VkClearValue.Buffer clearValues = VkClearValue.calloc(1, stack);
+            clearValues.get(0).color()
+                    .float32(0, 0.6f)
+                    .float32(1, 0.65f)
+                    .float32(2, 0.4f)
+                    .float32(3, 1.0f);
+
+            VkRenderPassBeginInfo renderPassBeginInfo = VkRenderPassBeginInfo.calloc(stack)
+                    .sType$Default()
+                    .renderPass(renderPass.address())
+                    .pClearValues(clearValues);
+            renderPassBeginInfo.renderArea().extent(extent).offset().set(0, 0);
+
+            for (int i = 0; i < commandBuffers.size(); i++) {
+                VkCommandBuffer commandBuffer = commandBuffers.get(i);
+                renderPassBeginInfo.framebuffer(framebuffers.get(i).address());
+
+                throwIfFailed(vkBeginCommandBuffer(commandBuffer, commandBufferBeginInfo));
+                vkCmdBeginRenderPass(commandBuffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+                vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
+                vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+                vkCmdEndRenderPass(commandBuffer);
+                throwIfFailed(vkEndCommandBuffer(commandBuffer));
+            }
+        }
+    }
 }

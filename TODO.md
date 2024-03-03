@@ -1,0 +1,1 @@
+- Consider extending `DispatchableHandleDevice` or `Pointer.Default` for all Vulkan object wrapper, just like `VkCommandBuffer`.
