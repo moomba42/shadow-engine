@@ -1,6 +1,6 @@
-package com.alexdl.sdng.vulkan;
+package com.alexdl.sdng.backend.vulkan;
 
-import com.alexdl.sdng.Disposable;
+import com.alexdl.sdng.backend.Disposable;
 import org.lwjgl.vulkan.enums.VkColorSpaceKHR;
 import org.lwjgl.vulkan.VkExtent2D;
 import org.lwjgl.vulkan.enums.VkFormat;

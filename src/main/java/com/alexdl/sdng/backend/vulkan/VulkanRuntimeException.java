@@ -1,4 +1,4 @@
-package com.alexdl.sdng.vulkan;
+package com.alexdl.sdng.backend.vulkan;
 
 public class VulkanRuntimeException extends RuntimeException {
     private final int vulkanResult;

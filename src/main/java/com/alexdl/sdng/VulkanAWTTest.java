@@ -16,7 +16,7 @@ import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
-import static com.alexdl.sdng.vulkan.VulkanUtils.translateVulkanResult;
+import static com.alexdl.sdng.backend.vulkan.VulkanUtils.translateVulkanResult;
 import static org.lwjgl.vulkan.KHRSurface.VK_KHR_SURFACE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.VK10.*;
 
@@ -25,7 +25,7 @@ public class VulkanAWTTest {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             VkApplicationInfo appInfo = VkApplicationInfo
                     .calloc(stack)
-                    .sType(VK_STRUCTURE_TYPE_APPLICATION_INFO)
+                    .sType$Default()
                     .pApplicationName(stack.UTF8("AWT Vulkan Demo"))
                     .pEngineName(stack.UTF8(""))
                     .apiVersion(VK_MAKE_VERSION(1, 0, 2));
@@ -34,7 +34,7 @@ public class VulkanAWTTest {
 
             VkInstanceCreateInfo pCreateInfo = VkInstanceCreateInfo
                     .calloc(stack)
-                    .sType(VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
+                    .sType$Default()
                     .pApplicationInfo(appInfo)
                     .ppEnabledExtensionNames(ppEnabledExtensionNames);
 

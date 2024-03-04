@@ -1,4 +1,4 @@
-package com.alexdl.sdng.vulkan;
+package com.alexdl.sdng.backend.vulkan;
 
 public record QueueIndices(
         int graphical,

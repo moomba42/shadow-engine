@@ -1,6 +1,7 @@
 package com.alexdl.sdng;
 
-import com.alexdl.sdng.vulkan.VulkanRenderer;
+import com.alexdl.sdng.backend.glfw.GlfwWindow;
+import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
 
 import java.util.Objects;
 
@@ -14,7 +15,7 @@ public class VulkanTest {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         GlfwWindow window = new GlfwWindow(glfwCreateWindow(800, 600, "Vulkan Test", 0, 0));
 
-        VulkanRenderer renderer = new VulkanRenderer(window, enableDebugging);
+        VulkanRenderer renderer = new VulkanRenderer(window, new Configuration(enableDebugging));
 
         while(!glfwWindowShouldClose(window.address())) {
             glfwPollEvents();
