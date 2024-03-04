@@ -1,4 +1,4 @@
-package com.alexdl.shadowhaven.engine.vulkan;
+package com.alexdl.sdng.vulkan;
 
 public record QueueIndices(
         int graphical,

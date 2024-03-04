@@ -1,4 +1,4 @@
-package com.alexdl.shadowhaven.engine;
+package com.alexdl.sdng;
 
 public record GlfwWindow(
         long address

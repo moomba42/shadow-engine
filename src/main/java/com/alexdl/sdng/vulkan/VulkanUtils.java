@@ -1,7 +1,7 @@
-package com.alexdl.shadowhaven.engine.vulkan;
+package com.alexdl.sdng.vulkan;
 
-import com.alexdl.shadowhaven.engine.GLFWRuntimeException;
-import com.alexdl.shadowhaven.engine.GlfwWindow;
+import com.alexdl.sdng.GLFWRuntimeException;
+import com.alexdl.sdng.GlfwWindow;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;

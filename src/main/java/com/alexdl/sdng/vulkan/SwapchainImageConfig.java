@@ -1,6 +1,6 @@
-package com.alexdl.shadowhaven.engine.vulkan;
+package com.alexdl.sdng.vulkan;
 
-import com.alexdl.shadowhaven.engine.Disposable;
+import com.alexdl.sdng.Disposable;
 import org.lwjgl.vulkan.enums.VkColorSpaceKHR;
 import org.lwjgl.vulkan.VkExtent2D;
 import org.lwjgl.vulkan.enums.VkFormat;

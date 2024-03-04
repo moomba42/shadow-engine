@@ -1,4 +1,4 @@
-package com.alexdl.shadowhaven.engine.vulkan;
+package com.alexdl.sdng.vulkan;
 
 public class VulkanRuntimeException extends RuntimeException {
     private final int vulkanResult;

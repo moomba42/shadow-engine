@@ -1,4 +1,4 @@
-package com.alexdl.shadowhaven.engine.vulkan;
+package com.alexdl.sdng.vulkan;
 
 import org.lwjgl.vulkan.VkImage;
 import org.lwjgl.vulkan.VkImageView;

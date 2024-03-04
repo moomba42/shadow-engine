@@ -1,13 +1,13 @@
-package com.alexdl.shadowhaven.engine.vulkan;
+package com.alexdl.sdng.vulkan;
 
-import com.alexdl.shadowhaven.engine.Disposable;
-import com.alexdl.shadowhaven.engine.GlfwWindow;
+import com.alexdl.sdng.Disposable;
+import com.alexdl.sdng.GlfwWindow;
 import org.lwjgl.vulkan.*;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 
 import java.util.List;
 
-import static com.alexdl.shadowhaven.engine.vulkan.VulkanUtils.*;
+import static com.alexdl.sdng.vulkan.VulkanUtils.*;
 import static org.lwjgl.vulkan.EXTDebugUtils.vkDestroyDebugUtilsMessengerEXT;
 import static org.lwjgl.vulkan.KHRSurface.vkDestroySurfaceKHR;
 import static org.lwjgl.vulkan.KHRSwapchain.vkDestroySwapchainKHR;

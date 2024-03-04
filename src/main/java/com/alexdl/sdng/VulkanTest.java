@@ -1,6 +1,6 @@
-package com.alexdl.shadowhaven.engine;
+package com.alexdl.sdng;
 
-import com.alexdl.shadowhaven.engine.vulkan.VulkanRenderer;
+import com.alexdl.sdng.vulkan.VulkanRenderer;
 
 import java.util.Objects;
 
