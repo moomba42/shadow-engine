@@ -19,6 +19,7 @@ public class VulkanTest {
 
         while(!glfwWindowShouldClose(window.address())) {
             glfwPollEvents();
+            renderer.draw();
         }
 
         renderer.dispose();

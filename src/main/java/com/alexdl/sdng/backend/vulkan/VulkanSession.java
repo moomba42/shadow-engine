@@ -5,6 +5,7 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 
+import javax.annotation.Nonnull;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
@@ -117,5 +118,19 @@ public class VulkanSession implements AutoCloseable {
             list.add(i, new VkImage(swapchainImageBuffer.get(i)));
         }
         return list;
+    }
+
+    public @Nonnull VkSemaphore createSemaphore(@Nonnull VkDevice logicalDevice) {
+        VkSemaphoreCreateInfo semaphoreCreateInfo = VkSemaphoreCreateInfo.calloc(stack).sType$Default();
+        LongBuffer semaphorePointer = stack.mallocLong(1);
+        throwIfFailed(vkCreateSemaphore(logicalDevice, semaphoreCreateInfo, null, semaphorePointer));
+        return new VkSemaphore(semaphorePointer.get(0));
+    }
+
+    public @Nonnull VkFence createFence(@Nonnull VkDevice logicalDevice, int flags) {
+        VkFenceCreateInfo fenceCreateInfo = VkFenceCreateInfo.calloc(stack).sType$Default().flags(flags);
+        LongBuffer fencePointer = stack.mallocLong(1);
+        throwIfFailed(vkCreateFence(logicalDevice, fenceCreateInfo, null, fencePointer));
+        return new VkFence(fencePointer.get(0));
     }
 }
