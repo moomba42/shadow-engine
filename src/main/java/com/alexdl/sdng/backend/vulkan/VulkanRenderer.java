@@ -12,6 +12,7 @@ import org.lwjgl.vulkan.enums.VkFormat;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 import org.lwjgl.vulkan.enums.VkSharingMode;
 
+import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -40,6 +41,9 @@ public class VulkanRenderer implements Disposable {
     private final Long debugMessengerPointer;
 
     private final VkDevice logicalDevice;
+
+    private final Mesh triangleMesh;
+
     private final SwapchainImageConfig swapchainImageConfig;
     private final VkSwapchainKHR swapchain;
     private final List<SwapchainImage> swapchainImages;
@@ -68,6 +72,12 @@ public class VulkanRenderer implements Disposable {
         VkPhysicalDevice physicalDevice = findFirstSuitablePhysicalDevice(instance, surface);
         logicalDevice = createLogicalDevice(physicalDevice, surface);
 
+        triangleMesh = new Mesh(logicalDevice, physicalDevice, List.of(
+                new Vertex(0, -0.4f, 0, 1, 0, 0),
+                new Vertex(0.4f, 0.4f, 0, 0, 1, 0),
+                new Vertex(-0.4f, 0.4f, 0, 0, 0, 1)
+        ));
+
         VkPresentModeKHR presentationMode = findBestPresentationMode(physicalDevice, surface);
         swapchainImageConfig = findBestSwapchainImageConfig(physicalDevice, surface, window);
         swapchain = createSwapchain(physicalDevice, logicalDevice, surface, swapchainImageConfig, presentationMode);
@@ -94,7 +104,7 @@ public class VulkanRenderer implements Disposable {
                 frameDrawSemaphores.add(i, vk.createSemaphore(logicalDevice));
             }
         }
-        recordCommands(renderPass, swapchainImageConfig.extent(), graphicsPipeline, commandBuffers, framebuffers);
+        recordCommands(renderPass, swapchainImageConfig.extent(), graphicsPipeline, commandBuffers, framebuffers, triangleMesh);
 
         drawingCache = new DrawingCache();
         drawingCache.setSubmitInfoWaitDstStageMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
@@ -105,6 +115,7 @@ public class VulkanRenderer implements Disposable {
     public void dispose() {
         vkDeviceWaitIdle(logicalDevice);
 
+        triangleMesh.dispose();
         drawingCache.dispose();
         frameDrawFences.forEach(fence -> vkDestroyFence(logicalDevice, fence.address(), null));
         frameImageAvailableSemaphores.forEach(semaphore -> vkDestroySemaphore(logicalDevice, semaphore.address(), null));
@@ -165,11 +176,11 @@ public class VulkanRenderer implements Disposable {
         return glfwExtensions;
     }
 
-    private static VkPhysicalDevice findFirstSuitablePhysicalDevice(VkInstance instance, VkSurfaceKHR surface) {
+    private static @Nonnull VkPhysicalDevice findFirstSuitablePhysicalDevice(VkInstance instance, VkSurfaceKHR surface) {
         try (VulkanSession vk = new VulkanSession()) {
             PointerBuffer physicalDevices = vk.enumeratePhysicalDevices(instance);
             if (physicalDevices.limit() == 0) {
-                return null;
+                throw new RuntimeException("Could not find a suitable physical device");
             }
 
             for (int i = 0; i < physicalDevices.limit(); i++) {
@@ -705,10 +716,27 @@ public class VulkanRenderer implements Disposable {
                     .module(fragmentShaderModule.address())
                     .pName(main);
 
+            ////// VERTEX LAYOUT & SHADER LOCATIONS //////
+            VkVertexInputBindingDescription.Buffer vertexInputBindingDescriptions = VkVertexInputBindingDescription.calloc(1, vk.stack())
+                    .binding(0)
+                    .stride(Vertex.BYTES)
+                    .inputRate(VK_VERTEX_INPUT_RATE_VERTEX);
+            VkVertexInputAttributeDescription.Buffer vertexInputAttributeDescriptions = VkVertexInputAttributeDescription.calloc(2, vk.stack());
+            vertexInputAttributeDescriptions.get(0)
+                    .location(0)
+                    .binding(0)
+                    .format(VK_FORMAT_R32G32B32_SFLOAT)
+                    .offset(Vertex.POSITION_OFFSET_BYTES);
+            vertexInputAttributeDescriptions.get(1)
+                    .location(1)
+                    .binding(0)
+                    .format(VK_FORMAT_R32G32B32_SFLOAT)
+                    .offset(Vertex.COLOR_OFFSET_BYTES);
             VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = VkPipelineVertexInputStateCreateInfo.calloc(vk.stack())
                     .sType$Default()
-                    .pVertexBindingDescriptions(null)
-                    .pVertexAttributeDescriptions(null);
+                    .pVertexBindingDescriptions(vertexInputBindingDescriptions)
+                    .pVertexAttributeDescriptions(vertexInputAttributeDescriptions);
+            ///////////////////////
 
             VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = VkPipelineInputAssemblyStateCreateInfo.calloc(vk.stack())
                     .sType$Default()
@@ -875,7 +903,7 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private static void recordCommands(VkRenderPass renderPass, VkExtent2D extent, VkPipeline graphicsPipeline, List<VkCommandBuffer> commandBuffers, List<VkFramebuffer> framebuffers) {
+    private static void recordCommands(VkRenderPass renderPass, VkExtent2D extent, VkPipeline graphicsPipeline, List<VkCommandBuffer> commandBuffers, List<VkFramebuffer> framebuffers, Mesh mesh) {
         try (VulkanSession vk = new VulkanSession()) {
             VkCommandBufferBeginInfo commandBufferBeginInfo = VkCommandBufferBeginInfo.calloc(vk.stack())
                     .sType$Default()
@@ -901,14 +929,22 @@ public class VulkanRenderer implements Disposable {
                 throwIfFailed(vkBeginCommandBuffer(commandBuffer, commandBufferBeginInfo));
                 vkCmdBeginRenderPass(commandBuffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
                 vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
-                vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+                vkCmdBindVertexBuffers(
+                        commandBuffer,
+                        0,
+                        vk.stack().longs(mesh.getVertexBuffer().address()),
+                        vk.stack().longs(0)
+                );
+
+                vkCmdDraw(commandBuffer, mesh.getVertexCount(), 1, 0, 0);
                 vkCmdEndRenderPass(commandBuffer);
                 throwIfFailed(vkEndCommandBuffer(commandBuffer));
             }
         }
     }
 
-    private static class DrawingCache implements Disposable{
+    private static class DrawingCache implements Disposable {
         // Image index
         private final IntBuffer imageIndexPointer;
 
@@ -957,7 +993,7 @@ public class VulkanRenderer implements Disposable {
         }
 
         public void setSubmitInfoWaitDstStageMasks(int... masks) {
-            if(masks.length != submitInfoWaitDstStageMask.limit()) {
+            if (masks.length != submitInfoWaitDstStageMask.limit()) {
                 memFree(submitInfoWaitDstStageMask);
                 submitInfoWaitDstStageMask = memAllocInt(masks.length);
                 submitInfo.pWaitDstStageMask(submitInfoWaitDstStageMask);

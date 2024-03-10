@@ -6,6 +6,8 @@ import org.lwjgl.vulkan.*;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 
 import javax.annotation.Nonnull;
+import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
@@ -132,5 +134,44 @@ public class VulkanSession implements AutoCloseable {
         LongBuffer fencePointer = stack.mallocLong(1);
         throwIfFailed(vkCreateFence(logicalDevice, fenceCreateInfo, null, fencePointer));
         return new VkFence(fencePointer.get(0));
+    }
+
+    public @Nonnull VkBuffer createBuffer(@Nonnull VkDevice logicalDevice, @Nonnull VkBufferCreateInfo info) {
+        LongBuffer bufferPointer = stack.mallocLong(1);
+        throwIfFailed(vkCreateBuffer(logicalDevice, info, null, bufferPointer));
+        return new VkBuffer(bufferPointer.get(0));
+    }
+
+    public @Nonnull VkMemoryRequirements getBufferMemoryRequirements(@Nonnull VkDevice logicalDevice,
+                                                                     @Nonnull VkBuffer buffer) {
+        VkMemoryRequirements memoryRequirements = VkMemoryRequirements.malloc(stack);
+        vkGetBufferMemoryRequirements(logicalDevice, buffer.address(), memoryRequirements);
+        return memoryRequirements;
+    }
+
+    public @Nonnull VkPhysicalDeviceMemoryProperties getPhysicalDeviceMemoryProperties(@Nonnull VkPhysicalDevice physicalDevice) {
+        VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties = VkPhysicalDeviceMemoryProperties.malloc(stack);
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, physicalDeviceMemoryProperties);
+        return physicalDeviceMemoryProperties;
+    }
+
+    public @Nonnull VkDeviceMemory allocateMemory(@Nonnull VkDevice logicalDevice, VkMemoryAllocateInfo info) {
+        LongBuffer deviceMemoryPointer = stack.mallocLong(1);
+        throwIfFailed(vkAllocateMemory(logicalDevice, info, null, deviceMemoryPointer));
+        return new VkDeviceMemory(deviceMemoryPointer.get(0));
+    }
+
+    public void bindBufferMemory(@Nonnull VkDevice logicalDevice, @Nonnull VkBuffer buffer, @Nonnull VkDeviceMemory deviceMemory, long memoryOffsetBytes) {
+        vkBindBufferMemory(logicalDevice, buffer.address(), deviceMemory.address(), memoryOffsetBytes);
+    }
+
+    public @Nonnull FloatBuffer mapMemoryFloat(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory, long offsetBytes, long sizeBytes, int flags) {
+        PointerBuffer memoryBufferPointer = stack.mallocPointer(1);
+        vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, memoryBufferPointer);
+        return memoryBufferPointer.getFloatBuffer(0, (int) (sizeBytes / Float.BYTES));
+    }
+
+    public void unmapMemory(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory) {
+        vkUnmapMemory(logicalDevice, deviceMemory.address());
     }
 }
