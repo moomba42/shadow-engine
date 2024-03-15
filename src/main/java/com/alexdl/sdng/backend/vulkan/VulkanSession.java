@@ -6,7 +6,7 @@ import org.lwjgl.vulkan.*;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 
 import javax.annotation.Nonnull;
-import java.nio.ByteBuffer;
+import javax.annotation.Nullable;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
@@ -31,11 +31,11 @@ public class VulkanSession implements AutoCloseable {
         stack.close();
     }
 
-    public MemoryStack stack() {
+    public @Nonnull MemoryStack stack() {
         return stack;
     }
 
-    public PointerBuffer enumeratePhysicalDevices(VkInstance instance) {
+    public @Nonnull PointerBuffer enumeratePhysicalDevices(@Nonnull VkInstance instance) {
         IntBuffer physicalDeviceCountPointer = stack.mallocInt(1);
         throwIfFailed(vkEnumeratePhysicalDevices(instance, physicalDeviceCountPointer, null));
 
@@ -45,7 +45,7 @@ public class VulkanSession implements AutoCloseable {
         return physicalDevices;
     }
 
-    public VkExtensionProperties.Buffer enumerateDeviceExtensionProperties(VkPhysicalDevice physicalDevice) {
+    public @Nonnull VkExtensionProperties.Buffer enumerateDeviceExtensionProperties(@Nonnull VkPhysicalDevice physicalDevice) {
         IntBuffer deviceExtensionCountPointer = stack.mallocInt(1);
         throwIfFailed(vkEnumerateDeviceExtensionProperties(physicalDevice, NULL_STRING, deviceExtensionCountPointer, null));
 
@@ -55,7 +55,7 @@ public class VulkanSession implements AutoCloseable {
         return deviceExtensions;
     }
 
-    public VkExtensionProperties.Buffer enumerateInstanceExtensionProperties() {
+    public @Nonnull VkExtensionProperties.Buffer enumerateInstanceExtensionProperties() {
         IntBuffer extensionCountPointer = stack.mallocInt(1);
         throwIfFailed(vkEnumerateInstanceExtensionProperties(NULL_STRING, extensionCountPointer, null));
 
@@ -64,7 +64,7 @@ public class VulkanSession implements AutoCloseable {
         return extensions;
     }
 
-    public VkLayerProperties.Buffer enumerateInstanceLayerProperties() {
+    public @Nonnull VkLayerProperties.Buffer enumerateInstanceLayerProperties() {
         IntBuffer layerCountPointer = stack.mallocInt(1);
         throwIfFailed(vkEnumerateInstanceLayerProperties(layerCountPointer, null));
 
@@ -73,7 +73,7 @@ public class VulkanSession implements AutoCloseable {
         return layers;
     }
 
-    public VkQueueFamilyProperties.Buffer getPhysicalDeviceQueueFamilyProperties(VkPhysicalDevice physicalDevice) {
+    public @Nonnull VkQueueFamilyProperties.Buffer getPhysicalDeviceQueueFamilyProperties(@Nonnull VkPhysicalDevice physicalDevice) {
         IntBuffer queueFamilyCountPointer = stack.mallocInt(1);
         vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamilyCountPointer, null);
 
@@ -82,7 +82,7 @@ public class VulkanSession implements AutoCloseable {
         return queueFamilies;
     }
 
-    public List<VkPresentModeKHR> getPhysicalDeviceSurfacePresentModesKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
+    public @Nonnull List<VkPresentModeKHR> getPhysicalDeviceSurfacePresentModesKHR(@Nonnull VkPhysicalDevice physicalDevice, @Nonnull VkSurfaceKHR surface) {
         IntBuffer presentationModeCount = stack.mallocInt(1);
         vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface.address(), presentationModeCount, null);
         IntBuffer presentationModeBuffer = stack.mallocInt(presentationModeCount.get(0));
@@ -95,7 +95,7 @@ public class VulkanSession implements AutoCloseable {
         return list;
     }
 
-    public VkSurfaceFormatKHR.Buffer getPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
+    public @Nonnull VkSurfaceFormatKHR.Buffer getPhysicalDeviceSurfaceFormatsKHR(@Nonnull VkPhysicalDevice physicalDevice, @Nonnull VkSurfaceKHR surface) {
         IntBuffer surfaceFormatsCount = stack.mallocInt(1);
         vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface.address(), surfaceFormatsCount, null);
         VkSurfaceFormatKHR.Buffer surfaceFormatBuffer = VkSurfaceFormatKHR.malloc(surfaceFormatsCount.get(0), stack);
@@ -103,13 +103,13 @@ public class VulkanSession implements AutoCloseable {
         return surfaceFormatBuffer;
     }
 
-    public VkSurfaceCapabilitiesKHR getPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
+    public @Nonnull VkSurfaceCapabilitiesKHR getPhysicalDeviceSurfaceCapabilitiesKHR(@Nonnull VkPhysicalDevice physicalDevice, @Nonnull VkSurfaceKHR surface) {
         VkSurfaceCapabilitiesKHR surfaceCapabilities = VkSurfaceCapabilitiesKHR.malloc(stack);
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface.address(), surfaceCapabilities);
         return surfaceCapabilities;
     }
 
-    public List<VkImage> getSwapchainImagesKHR(VkDevice logicalDevice, VkSwapchainKHR swapchain) {
+    public @Nonnull List<VkImage> getSwapchainImagesKHR(@Nonnull VkDevice logicalDevice, @Nonnull VkSwapchainKHR swapchain) {
         IntBuffer swapchainImageCount = stack.mallocInt(1);
         vkGetSwapchainImagesKHR(logicalDevice, swapchain.address(), swapchainImageCount, null);
         LongBuffer swapchainImageBuffer = stack.mallocLong(swapchainImageCount.get(0));
@@ -139,7 +139,7 @@ public class VulkanSession implements AutoCloseable {
     public @Nonnull VkBuffer createBuffer(@Nonnull VkDevice logicalDevice, @Nonnull VkBufferCreateInfo info) {
         LongBuffer bufferPointer = stack.mallocLong(1);
         throwIfFailed(vkCreateBuffer(logicalDevice, info, null, bufferPointer));
-        return new VkBuffer(bufferPointer.get(0));
+        return new VkBuffer(bufferPointer.get(0), null);
     }
 
     public @Nonnull VkMemoryRequirements getBufferMemoryRequirements(@Nonnull VkDevice logicalDevice,
@@ -170,8 +170,55 @@ public class VulkanSession implements AutoCloseable {
         vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, memoryBufferPointer);
         return memoryBufferPointer.getFloatBuffer(0, (int) (sizeBytes / Float.BYTES));
     }
+    public @Nonnull IntBuffer mapMemoryInt(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory, long offsetBytes, long sizeBytes, int flags) {
+        PointerBuffer memoryBufferPointer = stack.mallocPointer(1);
+        vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, memoryBufferPointer);
+        return memoryBufferPointer.getIntBuffer(0, (int) (sizeBytes / Integer.BYTES));
+    }
 
     public void unmapMemory(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory) {
         vkUnmapMemory(logicalDevice, deviceMemory.address());
+    }
+
+    public void destroyBuffer(@Nonnull VkDevice logicalDevice, @Nonnull VkBuffer stagingBuffer, @Nullable VkAllocationCallbacks pAllocator) {
+        vkDestroyBuffer(logicalDevice, stagingBuffer.address(), pAllocator);
+    }
+
+    public void freeMemory(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory memory, @Nullable VkAllocationCallbacks pAllocator) {
+        vkFreeMemory(logicalDevice, memory.address(), pAllocator);
+    }
+
+    public @Nonnull List<VkCommandBuffer> allocateCommandBuffers(@Nonnull VkDevice logicalDevice, @Nonnull VkCommandBufferAllocateInfo info) {
+        PointerBuffer pointer = stack.mallocPointer(info.commandBufferCount());
+        throwIfFailed(vkAllocateCommandBuffers(logicalDevice, info, pointer));
+        List<VkCommandBuffer> buffers = new ArrayList<>(pointer.limit());
+        for (int i = 0; i < pointer.limit(); i++) {
+            buffers.add(i, new VkCommandBuffer(pointer.get(i), logicalDevice));
+        }
+        return buffers;
+    }
+
+    public void beginCommandBuffer(@Nonnull VkCommandBuffer commandBuffer, @Nonnull VkCommandBufferBeginInfo beginInfo) {
+        vkBeginCommandBuffer(commandBuffer, beginInfo);
+    }
+
+    public void cmdCopyBuffer(@Nonnull VkCommandBuffer transferCommandBuffer, @Nonnull VkBuffer srcBuffer, @Nonnull VkBuffer dstBuffer, @Nonnull VkBufferCopy.Buffer params) {
+        vkCmdCopyBuffer(transferCommandBuffer, srcBuffer.address(), dstBuffer.address(), params);
+    }
+
+    public void endCommandBuffer(@Nonnull VkCommandBuffer commandBuffer) {
+        vkEndCommandBuffer(commandBuffer);
+    }
+
+    public void queueSubmit(@Nonnull VkQueue queue, @Nonnull VkSubmitInfo submitInfo, @Nullable VkFence fence) {
+        vkQueueSubmit(queue, submitInfo, fence == null ? VK_NULL_HANDLE : fence.address());
+    }
+
+    public void queueWaitIdle(@Nonnull VkQueue queue) {
+        vkQueueWaitIdle(queue);
+    }
+
+    public void freeCommandBuffers(VkDevice logicalDevice, VkCommandPool commandPool, VkCommandBuffer commandBuffer) {
+        vkFreeCommandBuffers(logicalDevice, commandPool.address(), commandBuffer);
     }
 }

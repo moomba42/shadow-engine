@@ -1,4 +1,6 @@
 package org.lwjgl.vulkan;
 
-public record VkBuffer(long address) {
+import javax.annotation.Nullable;
+
+public record VkBuffer(long address, @Nullable VkDeviceMemory memory) {
 }

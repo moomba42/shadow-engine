@@ -42,7 +42,7 @@ public class VulkanRenderer implements Disposable {
 
     private final VkDevice logicalDevice;
 
-    private final Mesh triangleMesh;
+    private final List<Mesh> meshes;
 
     private final SwapchainImageConfig swapchainImageConfig;
     private final VkSwapchainKHR swapchain;
@@ -55,8 +55,8 @@ public class VulkanRenderer implements Disposable {
     private final VkQueue presentQueue;
 
     private final List<VkFramebuffer> framebuffers;
-    private final VkCommandPool commandPool;
-    private final List<VkCommandBuffer> commandBuffers;
+    private final VkCommandPool graphicsCommandPool;
+    private final List<VkCommandBuffer> graphicsCommandBuffers;
     private final List<VkFence> frameDrawFences;
     private final List<VkSemaphore> frameImageAvailableSemaphores;
     private final List<VkSemaphore> frameDrawSemaphores;
@@ -72,12 +72,6 @@ public class VulkanRenderer implements Disposable {
         VkPhysicalDevice physicalDevice = findFirstSuitablePhysicalDevice(instance, surface);
         logicalDevice = createLogicalDevice(physicalDevice, surface);
 
-        triangleMesh = new Mesh(logicalDevice, physicalDevice, List.of(
-                new Vertex(0, -0.4f, 0, 1, 0, 0),
-                new Vertex(0.4f, 0.4f, 0, 0, 1, 0),
-                new Vertex(-0.4f, 0.4f, 0, 0, 0, 1)
-        ));
-
         VkPresentModeKHR presentationMode = findBestPresentationMode(physicalDevice, surface);
         swapchainImageConfig = findBestSwapchainImageConfig(physicalDevice, surface, window);
         swapchain = createSwapchain(physicalDevice, logicalDevice, surface, swapchainImageConfig, presentationMode);
@@ -92,8 +86,8 @@ public class VulkanRenderer implements Disposable {
         graphicsPipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
 
         framebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages);
-        commandPool = createCommandPool(logicalDevice, queueIndices.graphical());
-        commandBuffers = createCommandBuffers(logicalDevice, commandPool, framebuffers);
+        graphicsCommandPool = createCommandPool(logicalDevice, queueIndices.graphical());
+        graphicsCommandBuffers = createCommandBuffers(logicalDevice, graphicsCommandPool, framebuffers);
         frameDrawFences = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
         frameImageAvailableSemaphores = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
         frameDrawSemaphores = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
@@ -104,7 +98,21 @@ public class VulkanRenderer implements Disposable {
                 frameDrawSemaphores.add(i, vk.createSemaphore(logicalDevice));
             }
         }
-        recordCommands(renderPass, swapchainImageConfig.extent(), graphicsPipeline, commandBuffers, framebuffers, triangleMesh);
+        meshes = List.of(
+                new Mesh(graphicsQueue, graphicsCommandPool, List.of(
+                        new Vertex(-0.1f, -0.4f, 0, 1, 0, 0),
+                        new Vertex(-0.1f, 0.4f, 0, 0, 1, 0),
+                        new Vertex(-0.9f, 0.4f, 0, 0, 0, 1),
+                        new Vertex(-0.9f, -0.4f, 0, 1, 1, 0)
+                ), List.of(0, 1, 2, 2, 3, 0)),
+                new Mesh(graphicsQueue, graphicsCommandPool, List.of(
+                        new Vertex(0.9f, -0.4f, 0, 1, 0, 0),
+                        new Vertex(0.9f, 0.4f, 0, 0, 1, 0),
+                        new Vertex(0.1f, 0.4f, 0, 0, 0, 1),
+                        new Vertex(0.1f, -0.4f, 0, 1, 1, 0)
+                ), List.of(0, 1, 2, 2, 3, 0))
+        );
+        recordCommands(renderPass, swapchainImageConfig.extent(), graphicsPipeline, graphicsCommandBuffers, framebuffers, meshes);
 
         drawingCache = new DrawingCache();
         drawingCache.setSubmitInfoWaitDstStageMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
@@ -115,12 +123,14 @@ public class VulkanRenderer implements Disposable {
     public void dispose() {
         vkDeviceWaitIdle(logicalDevice);
 
-        triangleMesh.dispose();
+        for (Mesh mesh : meshes) {
+            mesh.dispose();
+        }
         drawingCache.dispose();
         frameDrawFences.forEach(fence -> vkDestroyFence(logicalDevice, fence.address(), null));
         frameImageAvailableSemaphores.forEach(semaphore -> vkDestroySemaphore(logicalDevice, semaphore.address(), null));
         frameDrawSemaphores.forEach(semaphore -> vkDestroySemaphore(logicalDevice, semaphore.address(), null));
-        vkDestroyCommandPool(logicalDevice, commandPool.address(), null);
+        vkDestroyCommandPool(logicalDevice, graphicsCommandPool.address(), null);
         for (VkFramebuffer framebuffer : framebuffers) {
             vkDestroyFramebuffer(logicalDevice, framebuffer.address(), null);
         }
@@ -151,7 +161,7 @@ public class VulkanRenderer implements Disposable {
 
         // Submit
         drawingCache.setSubmitInfoWaitSemaphore(frameImageAvailableSemaphores.get(currentFrame));
-        drawingCache.setSubmitInfoCommandBuffer(commandBuffers.get(imageIndex));
+        drawingCache.setSubmitInfoCommandBuffer(graphicsCommandBuffers.get(imageIndex));
         drawingCache.setSubmitInfoSignalSemaphore(frameDrawSemaphores.get(currentFrame));
         throwIfFailed(vkQueueSubmit(graphicsQueue, drawingCache.getSubmitInfo(), frameDrawFences.get(currentFrame).address()));
 
@@ -884,26 +894,16 @@ public class VulkanRenderer implements Disposable {
 
     private static List<VkCommandBuffer> createCommandBuffers(VkDevice logicalDevice, VkCommandPool commandPool, List<VkFramebuffer> framebuffers) {
         try (VulkanSession vk = new VulkanSession()) {
-            PointerBuffer commandBufferPointers = vk.stack().mallocPointer(framebuffers.size());
-
             VkCommandBufferAllocateInfo commandBufferAllocateInfo = VkCommandBufferAllocateInfo.calloc(vk.stack())
                     .sType$Default()
                     .commandPool(commandPool.address())
                     .level(VK_COMMAND_BUFFER_LEVEL_PRIMARY) // the secondary level is used to indicate that this buffer can only be run from another buffer (basically you can record a command to run a buffer of commands).
                     .commandBufferCount(framebuffers.size());
-
-            throwIfFailed(vkAllocateCommandBuffers(logicalDevice, commandBufferAllocateInfo, commandBufferPointers));
-
-            List<VkCommandBuffer> commandBuffers = new ArrayList<>(commandBufferPointers.limit());
-            for (int i = 0; i < commandBufferPointers.limit(); i++) {
-                commandBuffers.add(i, new VkCommandBuffer(commandBufferPointers.get(i), logicalDevice));
-            }
-
-            return commandBuffers;
+            return vk.allocateCommandBuffers(logicalDevice, commandBufferAllocateInfo);
         }
     }
 
-    private static void recordCommands(VkRenderPass renderPass, VkExtent2D extent, VkPipeline graphicsPipeline, List<VkCommandBuffer> commandBuffers, List<VkFramebuffer> framebuffers, Mesh mesh) {
+    private static void recordCommands(VkRenderPass renderPass, VkExtent2D extent, VkPipeline graphicsPipeline, List<VkCommandBuffer> commandBuffers, List<VkFramebuffer> framebuffers, List<Mesh> meshes) {
         try (VulkanSession vk = new VulkanSession()) {
             VkCommandBufferBeginInfo commandBufferBeginInfo = VkCommandBufferBeginInfo.calloc(vk.stack())
                     .sType$Default()
@@ -930,14 +930,22 @@ public class VulkanRenderer implements Disposable {
                 vkCmdBeginRenderPass(commandBuffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
                 vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
 
-                vkCmdBindVertexBuffers(
-                        commandBuffer,
-                        0,
-                        vk.stack().longs(mesh.getVertexBuffer().address()),
-                        vk.stack().longs(0)
-                );
+                for (Mesh mesh : meshes) {
+                    vkCmdBindVertexBuffers(
+                            commandBuffer,
+                            0,
+                            vk.stack().longs(mesh.getVertexBuffer().address()),
+                            vk.stack().longs(0)
+                    );
+                    vkCmdBindIndexBuffer(
+                            commandBuffer,
+                            mesh.getIndexBuffer().address(),
+                            0,
+                            VK_INDEX_TYPE_UINT32
+                    );
 
-                vkCmdDraw(commandBuffer, mesh.getVertexCount(), 1, 0, 0);
+                    vkCmdDrawIndexed(commandBuffer, mesh.getIndexCount(), 1, 0, 0, 0);
+                }
                 vkCmdEndRenderPass(commandBuffer);
                 throwIfFailed(vkEndCommandBuffer(commandBuffer));
             }
