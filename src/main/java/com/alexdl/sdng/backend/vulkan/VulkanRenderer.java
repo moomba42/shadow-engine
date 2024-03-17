@@ -46,21 +46,23 @@ public class VulkanRenderer implements Disposable {
 
     private final SwapchainImageConfig swapchainImageConfig;
     private final VkSwapchainKHR swapchain;
-    private final List<SwapchainImage> swapchainImages;
 
     private final VkPipelineLayout pipelineLayout;
     private final VkRenderPass renderPass;
     private final VkPipeline graphicsPipeline;
+    private final VkCommandPool graphicsCommandPool;
     private final VkQueue graphicsQueue;
     private final VkQueue presentQueue;
 
-    private final List<VkFramebuffer> framebuffers;
-    private final VkCommandPool graphicsCommandPool;
-    private final List<VkCommandBuffer> graphicsCommandBuffers;
+    // For each swapchain image
+    private final List<SwapchainImage> swapchainImages;
+    private final List<VkFramebuffer> swapchainFramebuffers;
+    private final List<VkCommandBuffer> swapchainCommandBuffers;
+
+    // For each frame
     private final List<VkFence> frameDrawFences;
     private final List<VkSemaphore> frameImageAvailableSemaphores;
     private final List<VkSemaphore> frameDrawSemaphores;
-    private final DrawingCache drawingCache;
 
     private int currentFrame = 0;
 
@@ -85,9 +87,9 @@ public class VulkanRenderer implements Disposable {
         renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format());
         graphicsPipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
 
-        framebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages);
+        swapchainFramebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages);
         graphicsCommandPool = createCommandPool(logicalDevice, queueIndices.graphical());
-        graphicsCommandBuffers = createCommandBuffers(logicalDevice, graphicsCommandPool, framebuffers);
+        swapchainCommandBuffers = createCommandBuffers(logicalDevice, graphicsCommandPool, swapchainFramebuffers);
         frameDrawFences = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
         frameImageAvailableSemaphores = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
         frameDrawSemaphores = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
@@ -112,11 +114,7 @@ public class VulkanRenderer implements Disposable {
                         new Vertex(0.1f, -0.4f, 0, 1, 1, 0)
                 ), List.of(0, 1, 2, 2, 3, 0))
         );
-        recordCommands(renderPass, swapchainImageConfig.extent(), graphicsPipeline, graphicsCommandBuffers, framebuffers, meshes);
-
-        drawingCache = new DrawingCache();
-        drawingCache.setSubmitInfoWaitDstStageMasks(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-        drawingCache.setPresentInfoSwapchain(swapchain);
+        recordCommands(renderPass, swapchainImageConfig.extent(), graphicsPipeline, swapchainCommandBuffers, swapchainFramebuffers, meshes);
     }
 
     @Override
@@ -126,12 +124,11 @@ public class VulkanRenderer implements Disposable {
         for (Mesh mesh : meshes) {
             mesh.dispose();
         }
-        drawingCache.dispose();
         frameDrawFences.forEach(fence -> vkDestroyFence(logicalDevice, fence.address(), null));
         frameImageAvailableSemaphores.forEach(semaphore -> vkDestroySemaphore(logicalDevice, semaphore.address(), null));
         frameDrawSemaphores.forEach(semaphore -> vkDestroySemaphore(logicalDevice, semaphore.address(), null));
         vkDestroyCommandPool(logicalDevice, graphicsCommandPool.address(), null);
-        for (VkFramebuffer framebuffer : framebuffers) {
+        for (VkFramebuffer framebuffer : swapchainFramebuffers) {
             vkDestroyFramebuffer(logicalDevice, framebuffer.address(), null);
         }
         swapchainImageConfig.dispose();
@@ -151,27 +148,38 @@ public class VulkanRenderer implements Disposable {
     }
 
     public void draw() {
-        // Wait for previous frame
-        vkWaitForFences(logicalDevice, frameDrawFences.get(currentFrame).address(), true, Integer.MAX_VALUE);
-        vkResetFences(logicalDevice, frameDrawFences.get(currentFrame).address());
+        try(VulkanSession vk = new VulkanSession()) {
+            // Wait for previous frame
+            vkWaitForFences(logicalDevice, frameDrawFences.get(currentFrame).address(), true, Integer.MAX_VALUE);
+            vkResetFences(logicalDevice, frameDrawFences.get(currentFrame).address());
 
-        // Get next image
-        vkAcquireNextImageKHR(logicalDevice, swapchain.address(), Long.MAX_VALUE, frameImageAvailableSemaphores.get(currentFrame).address(), VK_NULL_HANDLE, drawingCache.getImageIndexPointer());
-        int imageIndex = drawingCache.getImageIndexPointer().get(0);
+            // Get next image
+            IntBuffer imageIndexPointer = vk.stack().mallocInt(1);
+            vkAcquireNextImageKHR(logicalDevice, swapchain.address(), Long.MAX_VALUE, frameImageAvailableSemaphores.get(currentFrame).address(), VK_NULL_HANDLE, imageIndexPointer);
+            int imageIndex = imageIndexPointer.get(0);
 
-        // Submit
-        drawingCache.setSubmitInfoWaitSemaphore(frameImageAvailableSemaphores.get(currentFrame));
-        drawingCache.setSubmitInfoCommandBuffer(graphicsCommandBuffers.get(imageIndex));
-        drawingCache.setSubmitInfoSignalSemaphore(frameDrawSemaphores.get(currentFrame));
-        throwIfFailed(vkQueueSubmit(graphicsQueue, drawingCache.getSubmitInfo(), frameDrawFences.get(currentFrame).address()));
+            // Submit
+            VkSubmitInfo submitInfo = VkSubmitInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .waitSemaphoreCount(1)
+                    .pWaitSemaphores(vk.stack().longs(frameImageAvailableSemaphores.get(currentFrame).address()))
+                    .pWaitDstStageMask(vk.stack().ints(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT))
+                    .pCommandBuffers(vk.stack().pointers(swapchainCommandBuffers.get(imageIndex)))
+                    .pSignalSemaphores(vk.stack().longs(frameDrawSemaphores.get(currentFrame).address()));
+            throwIfFailed(vkQueueSubmit(graphicsQueue, submitInfo, frameDrawFences.get(currentFrame).address()));
 
-        // Present
-        drawingCache.setPresentInfoImageIndex(imageIndex);
-        drawingCache.setPresentInfoWaitSemaphore(frameDrawSemaphores.get(currentFrame));
-        throwIfFailed(vkQueuePresentKHR(presentQueue, drawingCache.getPresentInfo()));
+            // Present
+            VkPresentInfoKHR presentInfo = VkPresentInfoKHR.calloc(vk.stack())
+                    .sType$Default()
+                    .pWaitSemaphores(vk.stack().longs(frameDrawSemaphores.get(currentFrame).address()))
+                    .swapchainCount(1)
+                    .pSwapchains(vk.stack().longs(swapchain.address()))
+                    .pImageIndices(vk.stack().ints(imageIndex));
+            throwIfFailed(vkQueuePresentKHR(presentQueue, presentInfo));
 
-        // Increment current frame
-        currentFrame = (currentFrame + 1) % MAX_CONCURRENT_FRAME_DRAWS;
+            // Increment current frame
+            currentFrame = (currentFrame + 1) % MAX_CONCURRENT_FRAME_DRAWS;
+        }
     }
 
     private static List<String> getAllGlfwExtensions() {
@@ -949,110 +957,6 @@ public class VulkanRenderer implements Disposable {
                 vkCmdEndRenderPass(commandBuffer);
                 throwIfFailed(vkEndCommandBuffer(commandBuffer));
             }
-        }
-    }
-
-    private static class DrawingCache implements Disposable {
-        // Image index
-        private final IntBuffer imageIndexPointer;
-
-        // Submit Info
-        private final VkSubmitInfo submitInfo;
-        private IntBuffer submitInfoWaitDstStageMask;
-        private final LongBuffer submitInfoWaitSemaphores;
-        private final PointerBuffer submitInfoCommandBuffers;
-        private final LongBuffer submitInfoSignalSemaphores;
-
-        // Present Info
-        private final VkPresentInfoKHR presentInfo;
-        private final LongBuffer presentInfoWaitSemaphores;
-        private final LongBuffer presentInfoSwapchains;
-        private final IntBuffer presentInfoImageIndices;
-
-        public DrawingCache() {
-            imageIndexPointer = memAllocInt(1);
-            submitInfo = VkSubmitInfo.calloc()
-                    .sType$Default()
-                    .pNext(VK_NULL_HANDLE)
-                    .waitSemaphoreCount(1)
-                    .pWaitSemaphores(submitInfoWaitSemaphores = memAllocLong(1))
-                    .pWaitDstStageMask(submitInfoWaitDstStageMask = memAllocInt(1))
-                    .pCommandBuffers(submitInfoCommandBuffers = PointerBuffer.allocateDirect(1))
-                    .pSignalSemaphores(submitInfoSignalSemaphores = memAllocLong(1));
-            presentInfo = VkPresentInfoKHR.calloc()
-                    .sType$Default()
-                    .pNext(VK_NULL_HANDLE)
-                    .pWaitSemaphores(presentInfoWaitSemaphores = memAllocLong(1))
-                    .swapchainCount(1)
-                    .pSwapchains(presentInfoSwapchains = memAllocLong(1))
-                    .pImageIndices(presentInfoImageIndices = memAllocInt(1));
-        }
-
-        public IntBuffer getImageIndexPointer() {
-            return imageIndexPointer;
-        }
-
-        public VkSubmitInfo getSubmitInfo() {
-            return submitInfo;
-        }
-
-        public VkPresentInfoKHR getPresentInfo() {
-            return presentInfo;
-        }
-
-        public void setSubmitInfoWaitDstStageMasks(int... masks) {
-            if (masks.length != submitInfoWaitDstStageMask.limit()) {
-                memFree(submitInfoWaitDstStageMask);
-                submitInfoWaitDstStageMask = memAllocInt(masks.length);
-                submitInfo.pWaitDstStageMask(submitInfoWaitDstStageMask);
-            }
-            for (int i = 0; i < masks.length; i++) {
-                submitInfoWaitDstStageMask.put(i, masks[i]);
-            }
-        }
-
-        public void setSubmitInfoWaitSemaphore(VkSemaphore semaphore) {
-            assert submitInfoWaitSemaphores.limit() == 1;
-            submitInfoWaitSemaphores.put(0, semaphore.address());
-        }
-
-        public void setSubmitInfoCommandBuffer(VkCommandBuffer commandBuffer) {
-            assert submitInfoCommandBuffers.limit() == 1;
-            submitInfoCommandBuffers.put(0, commandBuffer.address());
-        }
-
-        public void setSubmitInfoSignalSemaphore(VkSemaphore semaphore) {
-            assert submitInfoSignalSemaphores.limit() == 1;
-            submitInfoSignalSemaphores.put(0, semaphore.address());
-        }
-
-        public void setPresentInfoWaitSemaphore(VkSemaphore semaphore) {
-            assert presentInfoWaitSemaphores.limit() == 1;
-            presentInfoWaitSemaphores.put(0, semaphore.address());
-        }
-
-        public void setPresentInfoSwapchain(VkSwapchainKHR swapchain) {
-            assert presentInfoSwapchains.limit() == 1;
-            presentInfoSwapchains.put(0, swapchain.address());
-        }
-
-        public void setPresentInfoImageIndex(int index) {
-            assert presentInfoImageIndices.limit() == 1;
-            presentInfoImageIndices.put(0, index);
-        }
-
-        @Override
-        public void dispose() {
-            memFree(imageIndexPointer);
-            submitInfo.free();
-            presentInfo.free();
-            memFree(submitInfoWaitDstStageMask);
-            memFree(submitInfoWaitSemaphores);
-            memFree(submitInfoCommandBuffers);
-            memFree(submitInfoSignalSemaphores);
-            memFree(presentInfoWaitSemaphores);
-            memFree(presentInfoSwapchains);
-            memFree(presentInfoImageIndices);
         }
     }
 }
