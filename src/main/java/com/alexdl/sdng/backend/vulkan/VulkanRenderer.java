@@ -4,6 +4,8 @@ import com.alexdl.sdng.Configuration;
 import com.alexdl.sdng.backend.Disposable;
 import com.alexdl.sdng.backend.glfw.GLFWRuntimeException;
 import com.alexdl.sdng.backend.glfw.GlfwWindow;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.vulkan.*;
@@ -28,7 +30,8 @@ import static com.alexdl.sdng.backend.vulkan.VulkanUtils.*;
 import static org.lwjgl.glfw.GLFW.glfwGetFramebufferSize;
 import static org.lwjgl.glfw.GLFWVulkan.glfwCreateWindowSurface;
 import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
-import static org.lwjgl.system.MemoryUtil.*;
+import static org.lwjgl.system.MemoryUtil.NULL;
+import static org.lwjgl.system.MemoryUtil.memASCII;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.KHRSurface.*;
 import static org.lwjgl.vulkan.KHRSwapchain.*;
@@ -42,22 +45,29 @@ public class VulkanRenderer implements Disposable {
 
     private final VkDevice logicalDevice;
 
+    private final MVP mvp;
     private final List<Mesh> meshes;
+
+    private final VkQueue graphicsQueue;
+    private final VkQueue presentQueue;
+
 
     private final SwapchainImageConfig swapchainImageConfig;
     private final VkSwapchainKHR swapchain;
 
+    private final VkDescriptorSetLayout mvpDescriptorSetLayout;
+    private final VkDescriptorPool mvpDescriptorPool;
     private final VkPipelineLayout pipelineLayout;
     private final VkRenderPass renderPass;
     private final VkPipeline graphicsPipeline;
     private final VkCommandPool graphicsCommandPool;
-    private final VkQueue graphicsQueue;
-    private final VkQueue presentQueue;
 
     // For each swapchain image
     private final List<SwapchainImage> swapchainImages;
     private final List<VkFramebuffer> swapchainFramebuffers;
     private final List<VkCommandBuffer> swapchainCommandBuffers;
+    private final List<VkBuffer> mvpUniformBuffers;
+    private final List<VkDescriptorSet> mvpDescriptorSets;
 
     // For each frame
     private final List<VkFence> frameDrawFences;
@@ -83,13 +93,16 @@ public class VulkanRenderer implements Disposable {
         graphicsQueue = findFirstQueueByFamily(logicalDevice, queueIndices.graphical());
         presentQueue = findFirstQueueByFamily(logicalDevice, queueIndices.surfaceSupporting());
 
-        pipelineLayout = createPipelineLayout(logicalDevice);
+
+        mvpDescriptorSetLayout = createMvpDescriptorSetLayout(logicalDevice);
+        pipelineLayout = createPipelineLayout(logicalDevice, List.of(mvpDescriptorSetLayout));
         renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format());
         graphicsPipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
+        graphicsCommandPool = createCommandPool(logicalDevice, queueIndices.graphical());
 
         swapchainFramebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages);
-        graphicsCommandPool = createCommandPool(logicalDevice, queueIndices.graphical());
         swapchainCommandBuffers = createCommandBuffers(logicalDevice, graphicsCommandPool, swapchainFramebuffers);
+
         frameDrawFences = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
         frameImageAvailableSemaphores = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
         frameDrawSemaphores = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
@@ -100,6 +113,28 @@ public class VulkanRenderer implements Disposable {
                 frameDrawSemaphores.add(i, vk.createSemaphore(logicalDevice));
             }
         }
+
+        Matrix4f projection = new Matrix4f()
+                .perspective(
+                        (float) Math.toRadians(45.0f),
+                        (float) swapchainImageConfig.extent().width() / (float) swapchainImageConfig.extent().height(),
+                        0.01f,
+                        100.0f);
+        projection.set(1, 1, projection.getRowColumn(1, 1) * -1);
+
+        mvp = MVP.calloc().set(
+                new Matrix4f().identity(),
+                new Matrix4f().lookAt(
+                        new Vector3f(3.0f, 1.0f, 2.0f),
+                        new Vector3f(0.0f, 0.0f, 0.0f),
+                        new Vector3f(0.0f, 1.0f, 0.0f)),
+                projection
+        );
+        mvpUniformBuffers = createMVPUniformBuffers(logicalDevice, swapchainImages.size());
+        mvpDescriptorPool = createUniformBufferDescriptorPool(logicalDevice, mvpUniformBuffers.size(), mvpUniformBuffers.size());
+        mvpDescriptorSets = createDescriptorSets(logicalDevice, mvpDescriptorPool, mvpDescriptorSetLayout, mvpUniformBuffers.size());
+        connectDescriptorSetsToMvpBuffers(logicalDevice, mvpDescriptorSets, mvpUniformBuffers);
+
         meshes = List.of(
                 new Mesh(graphicsQueue, graphicsCommandPool, List.of(
                         new Vertex(-0.1f, -0.4f, 0, 1, 0, 0),
@@ -114,13 +149,60 @@ public class VulkanRenderer implements Disposable {
                         new Vertex(0.1f, -0.4f, 0, 1, 1, 0)
                 ), List.of(0, 1, 2, 2, 3, 0))
         );
-        recordCommands(renderPass, swapchainImageConfig.extent(), graphicsPipeline, swapchainCommandBuffers, swapchainFramebuffers, meshes);
+        recordCommands();
+    }
+
+    private List<VkDescriptorSet> createDescriptorSets(VkDevice logicalDevice, VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout, int size) {
+        try (VulkanSession vk = new VulkanSession()) {
+            LongBuffer setLayouts = vk.stack().mallocLong(size);
+            for (int i = 0; i < size; i++) {
+                setLayouts.put(i, descriptorSetLayout.address());
+            }
+
+            VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = VkDescriptorSetAllocateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .descriptorPool(descriptorPool.address())
+                    .pSetLayouts(setLayouts);
+            return vk.allocateDescriptorSets(logicalDevice, descriptorSetAllocateInfo);
+        }
+    }
+
+    private VkDescriptorPool createUniformBufferDescriptorPool(VkDevice logicalDevice, int descriptorCount, int maxSets) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(1, vk.stack());
+            poolSizes.get(0)
+                    .type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+                    .descriptorCount(descriptorCount);
+            VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = VkDescriptorPoolCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .maxSets(maxSets)
+                    .pPoolSizes(poolSizes);
+
+            return vk.createDescriptorPool(logicalDevice, descriptorPoolCreateInfo, null);
+        }
+    }
+
+    private List<VkBuffer> createMVPUniformBuffers(VkDevice logicalDevice, int size) {
+        List<VkBuffer> buffers = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            buffers.add(i, createBuffer(logicalDevice, MVP.SIZE_BYTES, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+        }
+        return buffers;
     }
 
     @Override
     public void dispose() {
         vkDeviceWaitIdle(logicalDevice);
 
+        mvp.close();
+        vkDestroyDescriptorPool(logicalDevice, mvpDescriptorPool.address(), null);
+        vkDestroyDescriptorSetLayout(logicalDevice, mvpDescriptorSetLayout.address(), null);
+        for (VkBuffer buffer : mvpUniformBuffers) {
+            vkDestroyBuffer(logicalDevice, buffer.address(), null);
+            if (buffer.memory() != null) {
+                vkFreeMemory(logicalDevice, buffer.memory().address(), null);
+            }
+        }
         for (Mesh mesh : meshes) {
             mesh.dispose();
         }
@@ -148,7 +230,7 @@ public class VulkanRenderer implements Disposable {
     }
 
     public void draw() {
-        try(VulkanSession vk = new VulkanSession()) {
+        try (VulkanSession vk = new VulkanSession()) {
             // Wait for previous frame
             vkWaitForFences(logicalDevice, frameDrawFences.get(currentFrame).address(), true, Integer.MAX_VALUE);
             vkResetFences(logicalDevice, frameDrawFences.get(currentFrame).address());
@@ -157,6 +239,8 @@ public class VulkanRenderer implements Disposable {
             IntBuffer imageIndexPointer = vk.stack().mallocInt(1);
             vkAcquireNextImageKHR(logicalDevice, swapchain.address(), Long.MAX_VALUE, frameImageAvailableSemaphores.get(currentFrame).address(), VK_NULL_HANDLE, imageIndexPointer);
             int imageIndex = imageIndexPointer.get(0);
+
+            updateUniforms(imageIndex);
 
             // Submit
             VkSubmitInfo submitInfo = VkSubmitInfo.calloc(vk.stack())
@@ -179,6 +263,21 @@ public class VulkanRenderer implements Disposable {
 
             // Increment current frame
             currentFrame = (currentFrame + 1) % MAX_CONCURRENT_FRAME_DRAWS;
+        }
+    }
+
+    public void updateModel(Matrix4f model) {
+        mvp.model(model);
+    }
+
+    private void updateUniforms(int imageIndex) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkDeviceMemory memory = mvpUniformBuffers.get(imageIndex).memory();
+            assert memory != null;
+            ByteBuffer targetBuffer = vk.mapMemoryByte(logicalDevice, memory, 0, MVP.SIZE_BYTES, 0);
+            //noinspection resource
+            new MVP(targetBuffer).set(mvp);
+            vk.unmapMemory(logicalDevice, memory);
         }
     }
 
@@ -608,19 +707,16 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private static VkPipelineLayout createPipelineLayout(VkDevice logicalDevice) {
+    private static VkPipelineLayout createPipelineLayout(VkDevice logicalDevice, List<VkDescriptorSetLayout> descriptorSetLayouts) {
         try (VulkanSession vk = new VulkanSession()) {
-            VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VkPipelineLayoutCreateInfo.malloc(vk.stack())
+            LongBuffer descriptorSetLayoutsBuffer = toAddressBuffer(descriptorSetLayouts, vk.stack(), VkDescriptorSetLayout::address);
+
+            VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(vk.stack())
                     .sType$Default()
-                    .pNext(NULL)
-                    .flags(0)
-                    .setLayoutCount(0)
-                    .pSetLayouts(null)
+                    .pSetLayouts(descriptorSetLayoutsBuffer)
                     .pPushConstantRanges(null);
 
-            LongBuffer pipelineLayoutPointer = vk.stack().mallocLong(1);
-            throwIfFailed(vkCreatePipelineLayout(logicalDevice, pipelineLayoutCreateInfo, null, pipelineLayoutPointer));
-            return new VkPipelineLayout(pipelineLayoutPointer.get(0));
+            return vk.createPipelineLayout(logicalDevice, pipelineLayoutCreateInfo, null);
         }
     }
 
@@ -688,23 +784,60 @@ public class VulkanRenderer implements Disposable {
                     .pSubpasses(subpasses)
                     .pDependencies(dependencies);
 
-            LongBuffer renderPassPointer = vk.stack().mallocLong(1);
-            throwIfFailed(vkCreateRenderPass(logicalDevice, renderPassCreateInfo, null, renderPassPointer));
-            return new VkRenderPass(renderPassPointer.get(0));
+            return vk.createRenderPass(logicalDevice, renderPassCreateInfo, null);
         }
     }
 
     private static VkShaderModule createShaderModule(VkDevice logicalDevice, ByteBuffer code) {
         try (VulkanSession vk = new VulkanSession()) {
-            VkShaderModuleCreateInfo shaderModuleCreateInfo = VkShaderModuleCreateInfo.malloc(vk.stack())
+            VkShaderModuleCreateInfo shaderModuleCreateInfo = VkShaderModuleCreateInfo.calloc(vk.stack())
                     .sType$Default()
-                    .pNext(NULL)
-                    .flags(0)
                     .pCode(code);
 
-            LongBuffer shaderModulePointer = vk.stack().mallocLong(1);
-            throwIfFailed(vkCreateShaderModule(logicalDevice, shaderModuleCreateInfo, null, shaderModulePointer));
-            return new VkShaderModule(shaderModulePointer.get(0));
+            return vk.createShaderModule(logicalDevice, shaderModuleCreateInfo, null);
+        }
+    }
+
+    private VkDescriptorSetLayout createMvpDescriptorSetLayout(VkDevice logicalDevice) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkDescriptorSetLayoutBinding.Buffer descriptorSetLayoutBindings = VkDescriptorSetLayoutBinding.calloc(1, vk.stack());
+            descriptorSetLayoutBindings.get(0)
+                    .binding(0)
+                    .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+                    .descriptorCount(1)
+                    .stageFlags(VK_SHADER_STAGE_VERTEX_BIT)
+                    .pImmutableSamplers(null);
+
+            VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = VkDescriptorSetLayoutCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .pBindings(descriptorSetLayoutBindings);
+
+            return vk.createDescriptorSetLayout(logicalDevice, descriptorSetLayoutCreateInfo, null);
+        }
+    }
+
+    private void connectDescriptorSetsToMvpBuffers(VkDevice logicalDevice, List<VkDescriptorSet> descriptorSets, List<VkBuffer> mvpUniformBuffers) {
+        assert descriptorSets.size() == mvpUniformBuffers.size();
+        try (VulkanSession vk = new VulkanSession()) {
+            for (int i = 0; i < mvpUniformBuffers.size(); i++) {
+                VkDescriptorBufferInfo.Buffer descriptorBufferInfos = VkDescriptorBufferInfo.calloc(1, vk.stack());
+                descriptorBufferInfos.get(0)
+                        .buffer(mvpUniformBuffers.get(i).address())
+                        .offset(0)
+                        .range(MVP.SIZE_BYTES);
+                VkWriteDescriptorSet.Buffer mvpSetWrites = VkWriteDescriptorSet.calloc(1, vk.stack());
+                mvpSetWrites.get(0)
+                        .sType$Default()
+                        .dstSet(descriptorSets.get(i).address())
+                        .dstBinding(0)
+                        .dstArrayElement(0)
+                        .descriptorCount(1)
+                        .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+                        .pBufferInfo(descriptorBufferInfos);
+
+
+                vk.updateDescriptorSets(logicalDevice, mvpSetWrites, null);
+            }
         }
     }
 
@@ -788,8 +921,8 @@ public class VulkanRenderer implements Disposable {
                     .depthClampEnable(false)
                     .rasterizerDiscardEnable(false)
                     .polygonMode(VK_POLYGON_MODE_FILL)
-                    .cullMode(VK_CULL_MODE_BACK_BIT)
-                    .frontFace(VK_FRONT_FACE_CLOCKWISE)
+                    .cullMode(VK_CULL_MODE_NONE) // TODO: Change back to VK_CULL_MODE_BACK_BIT
+                    .frontFace(VK_FRONT_FACE_COUNTER_CLOCKWISE)
                     .depthBiasEnable(false)
                     .lineWidth(1);
 
@@ -841,13 +974,12 @@ public class VulkanRenderer implements Disposable {
                     .basePipelineHandle(VK_NULL_HANDLE)
                     .basePipelineIndex(-1);
 
-            LongBuffer graphicsPipelinePointer = vk.stack().mallocLong(1);
-            throwIfFailed(vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, graphicsPipelineCreateInfos, null, graphicsPipelinePointer));
+            List<VkPipeline> pipelines = vk.createGraphicsPipelines(logicalDevice, null, graphicsPipelineCreateInfos, null);
 
-            vkDestroyShaderModule(logicalDevice, fragmentShaderModule.address(), null);
-            vkDestroyShaderModule(logicalDevice, vertexShaderModule.address(), null);
+            vk.destroyShaderModule(logicalDevice, fragmentShaderModule, null);
+            vk.destroyShaderModule(logicalDevice, vertexShaderModule, null);
 
-            return new VkPipeline(graphicsPipelinePointer.get(0));
+            return pipelines.getFirst();
         }
     }
 
@@ -911,7 +1043,7 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private static void recordCommands(VkRenderPass renderPass, VkExtent2D extent, VkPipeline graphicsPipeline, List<VkCommandBuffer> commandBuffers, List<VkFramebuffer> framebuffers, List<Mesh> meshes) {
+    private void recordCommands() {
         try (VulkanSession vk = new VulkanSession()) {
             VkCommandBufferBeginInfo commandBufferBeginInfo = VkCommandBufferBeginInfo.calloc(vk.stack())
                     .sType$Default()
@@ -928,11 +1060,11 @@ public class VulkanRenderer implements Disposable {
                     .sType$Default()
                     .renderPass(renderPass.address())
                     .pClearValues(clearValues);
-            renderPassBeginInfo.renderArea().extent(extent).offset().set(0, 0);
+            renderPassBeginInfo.renderArea().extent(swapchainImageConfig.extent()).offset().set(0, 0);
 
-            for (int i = 0; i < commandBuffers.size(); i++) {
-                VkCommandBuffer commandBuffer = commandBuffers.get(i);
-                renderPassBeginInfo.framebuffer(framebuffers.get(i).address());
+            for (int i = 0; i < swapchainCommandBuffers.size(); i++) {
+                VkCommandBuffer commandBuffer = swapchainCommandBuffers.get(i);
+                renderPassBeginInfo.framebuffer(swapchainFramebuffers.get(i).address());
 
                 throwIfFailed(vkBeginCommandBuffer(commandBuffer, commandBufferBeginInfo));
                 vkCmdBeginRenderPass(commandBuffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -950,6 +1082,14 @@ public class VulkanRenderer implements Disposable {
                             mesh.getIndexBuffer().address(),
                             0,
                             VK_INDEX_TYPE_UINT32
+                    );
+                    vkCmdBindDescriptorSets(
+                            commandBuffer,
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            pipelineLayout.address(),
+                            0,
+                            vk.stack().longs(mvpDescriptorSets.get(i).address()),
+                            null
                     );
 
                     vkCmdDrawIndexed(commandBuffer, mesh.getIndexCount(), 1, 0, 0, 0);

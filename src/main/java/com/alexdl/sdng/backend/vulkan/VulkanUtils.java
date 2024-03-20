@@ -1,5 +1,16 @@
 package com.alexdl.sdng.backend.vulkan;
 
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.VkBuffer;
+import org.lwjgl.vulkan.VkBufferCreateInfo;
+import org.lwjgl.vulkan.VkDevice;
+import org.lwjgl.vulkan.VkDeviceMemory;
+import org.lwjgl.vulkan.VkMemoryAllocateInfo;
+
+import java.nio.LongBuffer;
+import java.util.List;
+import java.util.function.Function;
+
 import static org.lwjgl.vulkan.EXTDebugReport.VK_ERROR_VALIDATION_FAILED_EXT;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.KHRDisplaySwapchain.VK_ERROR_INCOMPATIBLE_DISPLAY_KHR;
@@ -87,5 +98,45 @@ public class VulkanUtils {
             case VK_ERROR_VALIDATION_FAILED_EXT -> "A validation layer found an error.";
             default -> "Unknown result code";
         };
+    }
+
+    public static <T> LongBuffer toAddressBuffer(List<T> objects, MemoryStack stack, Function<T, Long> mapping) {
+        LongBuffer buffer = stack.mallocLong(objects.size());
+        for (int i = 0; i < objects.size(); i++) {
+            buffer.put(i, mapping.apply(objects.get(i)));
+        }
+        return buffer;
+    }
+
+    public static VkBuffer createBuffer(VkDevice logicalDevice, long size, int usage, int memoryFlags) {
+        try (VulkanSession vk = new VulkanSession()) {
+            var bufferCreateInfo = VkBufferCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .size(size)
+                    .usage(usage)
+                    .sharingMode(VK_SHARING_MODE_EXCLUSIVE);
+            VkBuffer buffer = vk.createBuffer(logicalDevice, bufferCreateInfo);
+
+            var memoryRequirements = vk.getBufferMemoryRequirements(logicalDevice, buffer);
+            var memoryProperties = vk.getPhysicalDeviceMemoryProperties(logicalDevice.getPhysicalDevice());
+            int memoryTypeIndex = -1;
+            for (int i = 0; i < memoryProperties.memoryTypeCount(); i++) {
+                if ((memoryRequirements.memoryTypeBits() & (1 << i)) != 0 &&
+                    (memoryProperties.memoryTypes(i).propertyFlags() & memoryFlags) == memoryFlags) {
+                    memoryTypeIndex = i;
+                    break;
+                }
+            }
+
+            var memoryAllocateInfo = VkMemoryAllocateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .allocationSize(memoryRequirements.size())
+                    .memoryTypeIndex(memoryTypeIndex);
+            VkDeviceMemory bufferMemory = vk.allocateMemory(logicalDevice, memoryAllocateInfo);
+
+            vk.bindBufferMemory(logicalDevice, buffer, bufferMemory, 0);
+
+            return new VkBuffer(buffer.address(), bufferMemory);
+        }
     }
 }

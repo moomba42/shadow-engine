@@ -7,6 +7,7 @@ import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
@@ -26,6 +27,7 @@ public class VulkanSession implements AutoCloseable {
     public VulkanSession() {
         this.stack = MemoryStack.stackPush();
     }
+
     @Override
     public void close() {
         stack.close();
@@ -166,14 +168,21 @@ public class VulkanSession implements AutoCloseable {
     }
 
     public @Nonnull FloatBuffer mapMemoryFloat(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory, long offsetBytes, long sizeBytes, int flags) {
-        PointerBuffer memoryBufferPointer = stack.mallocPointer(1);
-        vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, memoryBufferPointer);
-        return memoryBufferPointer.getFloatBuffer(0, (int) (sizeBytes / Float.BYTES));
+        PointerBuffer pointer = stack.mallocPointer(1);
+        vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, pointer);
+        return pointer.getFloatBuffer(0, (int) (sizeBytes / Float.BYTES));
     }
+
     public @Nonnull IntBuffer mapMemoryInt(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory, long offsetBytes, long sizeBytes, int flags) {
-        PointerBuffer memoryBufferPointer = stack.mallocPointer(1);
-        vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, memoryBufferPointer);
-        return memoryBufferPointer.getIntBuffer(0, (int) (sizeBytes / Integer.BYTES));
+        PointerBuffer pointer = stack.mallocPointer(1);
+        vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, pointer);
+        return pointer.getIntBuffer(0, (int) (sizeBytes / Integer.BYTES));
+    }
+
+    public @Nonnull ByteBuffer mapMemoryByte(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory, long offsetBytes, long sizeBytes, int flags) {
+        PointerBuffer pointer = stack.mallocPointer(1);
+        vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, pointer);
+        return pointer.getByteBuffer(0, (int) sizeBytes);
     }
 
     public void unmapMemory(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory) {
@@ -218,7 +227,66 @@ public class VulkanSession implements AutoCloseable {
         vkQueueWaitIdle(queue);
     }
 
-    public void freeCommandBuffers(VkDevice logicalDevice, VkCommandPool commandPool, VkCommandBuffer commandBuffer) {
+    public void freeCommandBuffers(@Nonnull VkDevice logicalDevice, @Nonnull VkCommandPool commandPool, @Nonnull VkCommandBuffer commandBuffer) {
         vkFreeCommandBuffers(logicalDevice, commandPool.address(), commandBuffer);
+    }
+
+    public @Nonnull VkDescriptorSetLayout createDescriptorSetLayout(@Nonnull VkDevice logicalDevice, @Nonnull VkDescriptorSetLayoutCreateInfo createInfo, @Nullable VkAllocationCallbacks allocator) {
+        LongBuffer pointer = stack.mallocLong(1);
+        throwIfFailed(vkCreateDescriptorSetLayout(logicalDevice, createInfo, allocator, pointer));
+        return new VkDescriptorSetLayout(pointer.get(0));
+    }
+
+    public @Nonnull VkPipelineLayout createPipelineLayout(@Nonnull VkDevice logicalDevice, @Nonnull VkPipelineLayoutCreateInfo createInfo, @Nullable VkAllocationCallbacks allocator) {
+        LongBuffer pointer = stack.mallocLong(1);
+        throwIfFailed(vkCreatePipelineLayout(logicalDevice, createInfo, allocator, pointer));
+        return new VkPipelineLayout(pointer.get(0));
+    }
+
+    public @Nonnull VkRenderPass createRenderPass(@Nonnull VkDevice logicalDevice, @Nonnull VkRenderPassCreateInfo createInfo, @Nullable VkAllocationCallbacks allocator) {
+        LongBuffer pointer = stack.mallocLong(1);
+        throwIfFailed(vkCreateRenderPass(logicalDevice, createInfo, allocator, pointer));
+        return new VkRenderPass(pointer.get(0));
+    }
+
+    public @Nonnull VkShaderModule createShaderModule(@Nonnull VkDevice logicalDevice, @Nonnull VkShaderModuleCreateInfo createInfo, @Nullable VkAllocationCallbacks allocator) {
+        LongBuffer pointer = stack.mallocLong(1);
+        throwIfFailed(vkCreateShaderModule(logicalDevice, createInfo, allocator, pointer));
+        return new VkShaderModule(pointer.get(0));
+    }
+
+    public @Nonnull List<VkPipeline> createGraphicsPipelines(@Nonnull VkDevice logicalDevice, @Nullable VkPipelineCache pipelineCache, @Nonnull VkGraphicsPipelineCreateInfo.Buffer createInfos, @Nullable VkAllocationCallbacks allocator) {
+        LongBuffer pointers = stack.mallocLong(createInfos.limit());
+        long pipelineCacheAddress = pipelineCache != null ? pipelineCache.address() : VK_NULL_HANDLE;
+        throwIfFailed(vkCreateGraphicsPipelines(logicalDevice, pipelineCacheAddress, createInfos, allocator, pointers));
+        List<VkPipeline> pipelines = new ArrayList<>(pointers.limit());
+        for (int i = 0; i < pointers.limit(); i++) {
+            pipelines.add(i, new VkPipeline(pointers.get(i)));
+        }
+        return pipelines;
+    }
+
+    public void destroyShaderModule(@Nonnull VkDevice logicalDevice, @Nonnull VkShaderModule fragmentShaderModule, @Nullable VkAllocationCallbacks allocator) {
+        vkDestroyShaderModule(logicalDevice, fragmentShaderModule.address(), allocator);
+    }
+
+    public @Nonnull VkDescriptorPool createDescriptorPool(@Nonnull VkDevice logicalDevice, @Nonnull VkDescriptorPoolCreateInfo createInfo, @Nullable VkAllocationCallbacks allocator) {
+        LongBuffer pointer = stack.mallocLong(1);
+        throwIfFailed(vkCreateDescriptorPool(logicalDevice, createInfo, allocator, pointer));
+        return new VkDescriptorPool(pointer.get(0));
+    }
+
+    public @Nonnull List<VkDescriptorSet> allocateDescriptorSets(@Nonnull VkDevice logicalDevice, @Nonnull VkDescriptorSetAllocateInfo createInfo) {
+        LongBuffer pointers = stack.mallocLong(createInfo.descriptorSetCount());
+        throwIfFailed(vkAllocateDescriptorSets(logicalDevice, createInfo, pointers));
+        List<VkDescriptorSet> descriptorSets = new ArrayList<>(pointers.limit());
+        for (int i = 0; i < pointers.limit(); i++) {
+            descriptorSets.add(i, new VkDescriptorSet(pointers.get(i)));
+        }
+        return descriptorSets;
+    }
+
+    public void updateDescriptorSets(@Nonnull VkDevice logicalDevice, @Nullable VkWriteDescriptorSet.Buffer descriptorSetWrites, @Nullable VkCopyDescriptorSet.Buffer descriptorSetCopies) {
+        vkUpdateDescriptorSets(logicalDevice, descriptorSetWrites, descriptorSetCopies);
     }
 }

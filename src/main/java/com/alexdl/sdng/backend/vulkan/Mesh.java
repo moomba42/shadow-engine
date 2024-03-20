@@ -8,6 +8,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.List;
 
+import static com.alexdl.sdng.backend.vulkan.VulkanUtils.createBuffer;
 import static org.lwjgl.vulkan.VK10.*;
 
 public class Mesh implements Disposable {
@@ -85,38 +86,6 @@ public class Mesh implements Disposable {
             vk.freeMemory(logicalDevice, stagingBuffer.memory(), null);
 
             return indexBuffer;
-        }
-    }
-
-    private static VkBuffer createBuffer(VkDevice logicalDevice, long size, int usage, int memoryFlags) {
-        try(VulkanSession vk = new VulkanSession()) {
-            var bufferCreateInfo = VkBufferCreateInfo.calloc(vk.stack())
-                    .sType$Default()
-                    .size(size)
-                    .usage(usage)
-                    .sharingMode(VK_SHARING_MODE_EXCLUSIVE);
-            VkBuffer buffer = vk.createBuffer(logicalDevice, bufferCreateInfo);
-
-            var memoryRequirements = vk.getBufferMemoryRequirements(logicalDevice, buffer);
-            var memoryProperties = vk.getPhysicalDeviceMemoryProperties(logicalDevice.getPhysicalDevice());
-            int memoryTypeIndex = -1;
-            for (int i = 0; i < memoryProperties.memoryTypeCount(); i++) {
-                if ((memoryRequirements.memoryTypeBits() & (1 << i)) != 0 &&
-                    (memoryProperties.memoryTypes(i).propertyFlags() & memoryFlags) == memoryFlags) {
-                    memoryTypeIndex = i;
-                    break;
-                }
-            }
-
-            var memoryAllocateInfo = VkMemoryAllocateInfo.calloc(vk.stack())
-                    .sType$Default()
-                    .allocationSize(memoryRequirements.size())
-                    .memoryTypeIndex(memoryTypeIndex);
-            VkDeviceMemory bufferMemory = vk.allocateMemory(logicalDevice, memoryAllocateInfo);
-
-            vk.bindBufferMemory(logicalDevice, buffer, bufferMemory, 0);
-
-            return new VkBuffer(buffer.address(), bufferMemory);
         }
     }
 
