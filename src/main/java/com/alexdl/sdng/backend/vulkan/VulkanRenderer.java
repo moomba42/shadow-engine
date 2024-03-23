@@ -4,6 +4,8 @@ import com.alexdl.sdng.Configuration;
 import com.alexdl.sdng.backend.Disposable;
 import com.alexdl.sdng.backend.glfw.GLFWRuntimeException;
 import com.alexdl.sdng.backend.glfw.GlfwWindow;
+import com.alexdl.sdng.backend.vulkan.structs.SceneData;
+import com.alexdl.sdng.backend.vulkan.structs.VertexData;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
@@ -45,7 +47,8 @@ public class VulkanRenderer implements Disposable {
 
     private final VkDevice logicalDevice;
 
-    private final MVP mvp;
+    private final SceneData sceneData;
+    private final List<VertexData.Buffer> meshData;
     private final List<Mesh> meshes;
 
     private final VkQueue graphicsQueue;
@@ -93,7 +96,6 @@ public class VulkanRenderer implements Disposable {
         graphicsQueue = findFirstQueueByFamily(logicalDevice, queueIndices.graphical());
         presentQueue = findFirstQueueByFamily(logicalDevice, queueIndices.surfaceSupporting());
 
-
         mvpDescriptorSetLayout = createMvpDescriptorSetLayout(logicalDevice);
         pipelineLayout = createPipelineLayout(logicalDevice, List.of(mvpDescriptorSetLayout));
         renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format());
@@ -122,7 +124,7 @@ public class VulkanRenderer implements Disposable {
                         100.0f);
         projection.set(1, 1, projection.getRowColumn(1, 1) * -1);
 
-        mvp = MVP.calloc().set(
+        sceneData = SceneData.calloc().set(
                 new Matrix4f().identity(),
                 new Matrix4f().lookAt(
                         new Vector3f(3.0f, 1.0f, 2.0f),
@@ -135,19 +137,23 @@ public class VulkanRenderer implements Disposable {
         mvpDescriptorSets = createDescriptorSets(logicalDevice, mvpDescriptorPool, mvpDescriptorSetLayout, mvpUniformBuffers.size());
         connectDescriptorSetsToMvpBuffers(logicalDevice, mvpDescriptorSets, mvpUniformBuffers);
 
+        VertexData.Buffer quad1 = VertexData.create(new float[]{
+                -0.1f, -0.4f, 0, 1, 0, 0,
+                -0.1f,  0.4f, 0, 0, 1, 0,
+                -0.9f,  0.4f, 0, 0, 0, 1,
+                -0.9f, -0.4f, 0, 1, 1, 0
+        });
+        VertexData.Buffer quad2 = VertexData.create(new float[]{
+                0.9f, -0.4f, 0, 1, 0, 0,
+                0.9f,  0.4f, 0, 0, 1, 0,
+                0.1f,  0.4f, 0, 0, 0, 1,
+                0.1f, -0.4f, 0, 1, 1, 0
+        });
+        IntBuffer quadIndices = BufferUtils.createIntBuffer(6).put(0, new int[]{0, 1, 2, 2, 3, 0});
+        meshData = List.of(quad1, quad2);
         meshes = List.of(
-                new Mesh(graphicsQueue, graphicsCommandPool, List.of(
-                        new Vertex(-0.1f, -0.4f, 0, 1, 0, 0),
-                        new Vertex(-0.1f, 0.4f, 0, 0, 1, 0),
-                        new Vertex(-0.9f, 0.4f, 0, 0, 0, 1),
-                        new Vertex(-0.9f, -0.4f, 0, 1, 1, 0)
-                ), List.of(0, 1, 2, 2, 3, 0)),
-                new Mesh(graphicsQueue, graphicsCommandPool, List.of(
-                        new Vertex(0.9f, -0.4f, 0, 1, 0, 0),
-                        new Vertex(0.9f, 0.4f, 0, 0, 1, 0),
-                        new Vertex(0.1f, 0.4f, 0, 0, 0, 1),
-                        new Vertex(0.1f, -0.4f, 0, 1, 1, 0)
-                ), List.of(0, 1, 2, 2, 3, 0))
+                new Mesh(graphicsQueue, graphicsCommandPool, quad1, quadIndices),
+                new Mesh(graphicsQueue, graphicsCommandPool, quad2, quadIndices)
         );
         recordCommands();
     }
@@ -185,7 +191,7 @@ public class VulkanRenderer implements Disposable {
     private List<VkBuffer> createMVPUniformBuffers(VkDevice logicalDevice, int size) {
         List<VkBuffer> buffers = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
-            buffers.add(i, createBuffer(logicalDevice, MVP.SIZE_BYTES, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+            buffers.add(i, createBuffer(logicalDevice, SceneData.SIZE_BYTES, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
         }
         return buffers;
     }
@@ -194,7 +200,7 @@ public class VulkanRenderer implements Disposable {
     public void dispose() {
         vkDeviceWaitIdle(logicalDevice);
 
-        mvp.close();
+        sceneData.close();
         vkDestroyDescriptorPool(logicalDevice, mvpDescriptorPool.address(), null);
         vkDestroyDescriptorSetLayout(logicalDevice, mvpDescriptorSetLayout.address(), null);
         for (VkBuffer buffer : mvpUniformBuffers) {
@@ -205,6 +211,9 @@ public class VulkanRenderer implements Disposable {
         }
         for (Mesh mesh : meshes) {
             mesh.dispose();
+        }
+        for (VertexData.Buffer data : meshData) {
+            data.close();
         }
         frameDrawFences.forEach(fence -> vkDestroyFence(logicalDevice, fence.address(), null));
         frameImageAvailableSemaphores.forEach(semaphore -> vkDestroySemaphore(logicalDevice, semaphore.address(), null));
@@ -267,16 +276,16 @@ public class VulkanRenderer implements Disposable {
     }
 
     public void updateModel(Matrix4f model) {
-        mvp.model(model);
+        sceneData.model(model);
     }
 
     private void updateUniforms(int imageIndex) {
         try (VulkanSession vk = new VulkanSession()) {
             VkDeviceMemory memory = mvpUniformBuffers.get(imageIndex).memory();
             assert memory != null;
-            ByteBuffer targetBuffer = vk.mapMemoryByte(logicalDevice, memory, 0, MVP.SIZE_BYTES, 0);
+            ByteBuffer targetBuffer = vk.mapMemoryByte(logicalDevice, memory, 0, SceneData.SIZE_BYTES, 0);
             //noinspection resource
-            new MVP(targetBuffer).set(mvp);
+            new SceneData(targetBuffer).set(sceneData);
             vk.unmapMemory(logicalDevice, memory);
         }
     }
@@ -824,7 +833,7 @@ public class VulkanRenderer implements Disposable {
                 descriptorBufferInfos.get(0)
                         .buffer(mvpUniformBuffers.get(i).address())
                         .offset(0)
-                        .range(MVP.SIZE_BYTES);
+                        .range(SceneData.SIZE_BYTES);
                 VkWriteDescriptorSet.Buffer mvpSetWrites = VkWriteDescriptorSet.calloc(1, vk.stack());
                 mvpSetWrites.get(0)
                         .sType$Default()

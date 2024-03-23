@@ -167,6 +167,12 @@ public class VulkanSession implements AutoCloseable {
         vkBindBufferMemory(logicalDevice, buffer.address(), deviceMemory.address(), memoryOffsetBytes);
     }
 
+    public long mapMemoryPointer(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory, long offsetBytes, long sizeBytes, int flags) {
+        PointerBuffer pointer = stack.mallocPointer(1);
+        vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, pointer);
+        return pointer.get(0);
+    }
+
     public @Nonnull FloatBuffer mapMemoryFloat(@Nonnull VkDevice logicalDevice, @Nonnull VkDeviceMemory deviceMemory, long offsetBytes, long sizeBytes, int flags) {
         PointerBuffer pointer = stack.mallocPointer(1);
         vkMapMemory(logicalDevice, deviceMemory.address(), offsetBytes, sizeBytes, flags, pointer);

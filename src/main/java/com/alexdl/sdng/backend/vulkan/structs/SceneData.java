@@ -1,4 +1,4 @@
-package com.alexdl.sdng.backend.vulkan;
+package com.alexdl.sdng.backend.vulkan.structs;
 
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryStack;
@@ -11,15 +11,12 @@ import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 
-import static com.alexdl.sdng.backend.vulkan.VulkanConstants.MATRIX_4F_SIZE_BYTES;
-import static com.alexdl.sdng.backend.vulkan.VulkanConstants.MATRIX_4F_SIZE_FLOATS;
+import static com.alexdl.sdng.backend.vulkan.SizeConstants.MATRIX_4F_SIZE_BYTES;
+import static com.alexdl.sdng.backend.vulkan.SizeConstants.MATRIX_4F_SIZE_FLOATS;
 import static org.lwjgl.system.MemoryUtil.*;
 
-public class MVP extends Struct<MVP> implements NativeResource {
-    public static final int SIZE_BYTES;
-
-    public static final int ALIGNMENT_BYTES;
-
+public class SceneData extends Struct<SceneData> implements NativeResource {
+    public static final int SIZE_BYTES, ALIGNMENT_BYTES;
     public static final int FIELD_PROJECTION, FIELD_VIEW, FIELD_MODEL;
 
     static {
@@ -39,74 +36,65 @@ public class MVP extends Struct<MVP> implements NativeResource {
 
     private final FloatBuffer projection, view, model;
 
-    /**
-     * Creates a struct instance at the specified address.
-     *
-     * @param address   the struct memory address
-     * @param container an optional container buffer, to be referenced strongly by the struct instance.
-     */
-    protected MVP(long address, @Nullable ByteBuffer container) {
+    protected SceneData(long address, @Nullable ByteBuffer container) {
         super(address, container);
         this.projection = MemoryUtil.memFloatBuffer(address() + FIELD_PROJECTION, MATRIX_4F_SIZE_FLOATS);
         this.view = MemoryUtil.memFloatBuffer(address() + FIELD_VIEW, MATRIX_4F_SIZE_FLOATS);
         this.model = MemoryUtil.memFloatBuffer(address() + FIELD_MODEL, MATRIX_4F_SIZE_FLOATS);
     }
 
-    public MVP(ByteBuffer container) {
+    public SceneData(ByteBuffer container) {
         this(memAddress(container), __checkContainer(container, SIZE_BYTES));
     }
 
-    public static MVP calloc() {
-        return new MVP(nmemCallocChecked(1, SIZE_BYTES), null);
+    public static SceneData calloc() {
+        return new SceneData(nmemCallocChecked(1, SIZE_BYTES), null);
     }
 
-    public static MVP calloc(MemoryStack stack) {
-        return new MVP(stack.ncalloc(ALIGNMENT_BYTES, 1, SIZE_BYTES), null);
+    public static SceneData calloc(MemoryStack stack) {
+        return new SceneData(stack.ncalloc(ALIGNMENT_BYTES, 1, SIZE_BYTES), null);
     }
 
 
-    public MVP model(Matrix4f value) {
+    public SceneData model(Matrix4f value) {
         value.get(0, model);
         return this;
     }
+    public Matrix4f model() {
+        return new Matrix4f(model);
+    }
 
-    public MVP view(Matrix4f value) {
+    public SceneData view(Matrix4f value) {
         value.get(0, view);
         return this;
     }
+    public Matrix4f view() {
+        return new Matrix4f(view);
+    }
 
-    public MVP projection(Matrix4f value) {
+    public SceneData projection(Matrix4f value) {
         value.get(0, projection);
         return this;
     }
+    public Matrix4f projection() {
+        return new Matrix4f(projection);
+    }
 
-    public MVP set(Matrix4f model, Matrix4f view, Matrix4f projection) {
+    public SceneData set(Matrix4f model, Matrix4f view, Matrix4f projection) {
         model(model);
         view(view);
         projection(projection);
         return this;
     }
 
-    public MVP set(MVP src) {
+    public SceneData set(SceneData src) {
         memCopy(src.address(), address(), SIZE_BYTES);
         return this;
     }
 
-    public Matrix4f model() {
-        return new Matrix4f(model);
-    }
-
-    public Matrix4f view() {
-        return new Matrix4f(view);
-    }
-
-    public Matrix4f projection() {
-        return new Matrix4f(projection);
-    }
-
     @Override
-    protected @Nonnull MVP create(long address, @Nullable ByteBuffer container) {
-        return new MVP(address, container);
+    protected @Nonnull SceneData create(long address, @Nullable ByteBuffer container) {
+        return new SceneData(address, container);
     }
 
     @Override

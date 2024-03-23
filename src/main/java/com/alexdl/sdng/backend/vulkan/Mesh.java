@@ -1,14 +1,23 @@
 package com.alexdl.sdng.backend.vulkan;
 
 import com.alexdl.sdng.backend.Disposable;
-import org.lwjgl.vulkan.*;
+import com.alexdl.sdng.backend.vulkan.structs.VertexData;
+import org.lwjgl.vulkan.VkBuffer;
+import org.lwjgl.vulkan.VkBufferCopy;
+import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkCommandBufferAllocateInfo;
+import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
+import org.lwjgl.vulkan.VkCommandPool;
+import org.lwjgl.vulkan.VkDevice;
+import org.lwjgl.vulkan.VkQueue;
+import org.lwjgl.vulkan.VkSubmitInfo;
 
 import javax.annotation.Nonnull;
-import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.List;
 
 import static com.alexdl.sdng.backend.vulkan.VulkanUtils.createBuffer;
+import static org.lwjgl.system.MemoryUtil.memAddress;
+import static org.lwjgl.system.MemoryUtil.memCopy;
 import static org.lwjgl.vulkan.VK10.*;
 
 public class Mesh implements Disposable {
@@ -19,17 +28,18 @@ public class Mesh implements Disposable {
 
     public Mesh(@Nonnull VkQueue transferQueue,
                 @Nonnull VkCommandPool transferCommandPool,
-                @Nonnull List<Vertex> vertices,
-                @Nonnull List<Integer> indices) {
-        this.indexCount = indices.size();
+                @Nonnull VertexData.Buffer vertexData,
+                @Nonnull IntBuffer indexData) {
+        this.indexCount = indexData.limit();
         this.logicalDevice = transferQueue.getDevice();
-        this.vertexBuffer = createVertexBuffer(vertices, transferQueue, transferCommandPool);
-        this.indexBuffer = createIndexBuffer(indices, transferQueue, transferCommandPool);
+        this.vertexBuffer = createVertexBuffer(vertexData, transferQueue, transferCommandPool);
+        this.indexBuffer = createIndexBuffer(indexData, transferQueue, transferCommandPool);
     }
 
     public VkBuffer getVertexBuffer() {
         return vertexBuffer;
     }
+
     public int getIndexCount() {
         return indexCount;
     }
@@ -38,22 +48,15 @@ public class Mesh implements Disposable {
         return indexBuffer;
     }
 
-    private static VkBuffer createVertexBuffer(List<Vertex> vertices, VkQueue transferQueue, VkCommandPool transferCommandPool) {
+    private static VkBuffer createVertexBuffer(VertexData.Buffer vertexData, VkQueue transferQueue, VkCommandPool transferCommandPool) {
         try (VulkanSession vk = new VulkanSession()) {
-            long bufferSize = (long) Vertex.BYTES * vertices.size();
+            long bufferSize = (long) vertexData.sizeof() * vertexData.limit();
             VkDevice logicalDevice = transferQueue.getDevice();
             VkBuffer stagingBuffer = createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
             assert stagingBuffer.memory() != null;
 
-            FloatBuffer stagingBufferView = vk.mapMemoryFloat(logicalDevice, stagingBuffer.memory(), 0, bufferSize, 0);
-            for (int i = 0; i < vertices.size(); i++) {
-                stagingBufferView.put(((i*6) + 0), vertices.get(i).position().x());
-                stagingBufferView.put(((i*6) + 1), vertices.get(i).position().y());
-                stagingBufferView.put(((i*6) + 2), vertices.get(i).position().z());
-                stagingBufferView.put(((i*6) + 3), vertices.get(i).color().x());
-                stagingBufferView.put(((i*6) + 4), vertices.get(i).color().y());
-                stagingBufferView.put(((i*6) + 5), vertices.get(i).color().z());
-            }
+            long stagingBufferMappedMemoryAddress = vk.mapMemoryPointer(logicalDevice, stagingBuffer.memory(), 0, bufferSize, 0);
+            memCopy(vertexData.address(), stagingBufferMappedMemoryAddress, bufferSize);
             vk.unmapMemory(logicalDevice, stagingBuffer.memory());
 
             VkBuffer vertexBuffer = createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -66,17 +69,15 @@ public class Mesh implements Disposable {
         }
     }
 
-    private static VkBuffer createIndexBuffer(List<Integer> indices, VkQueue transferQueue, VkCommandPool transferCommandPool) {
+    private static VkBuffer createIndexBuffer(IntBuffer indexData, VkQueue transferQueue, VkCommandPool transferCommandPool) {
         try (VulkanSession vk = new VulkanSession()) {
-            long bufferSize = (long) Integer.BYTES * indices.size();
+            long bufferSize = (long) Integer.BYTES * indexData.limit();
             VkDevice logicalDevice = transferQueue.getDevice();
             VkBuffer stagingBuffer = createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
             assert stagingBuffer.memory() != null;
 
-            IntBuffer stagingBufferView = vk.mapMemoryInt(logicalDevice, stagingBuffer.memory(), 0, bufferSize, 0);
-            for (int i = 0; i < indices.size(); i++) {
-                stagingBufferView.put(i, indices.get(i));
-            }
+            long stagingBufferMappedMemoryAddress = vk.mapMemoryPointer(logicalDevice, stagingBuffer.memory(), 0, bufferSize, 0);
+            memCopy(memAddress(indexData), stagingBufferMappedMemoryAddress, bufferSize);
             vk.unmapMemory(logicalDevice, stagingBuffer.memory());
 
             VkBuffer indexBuffer = createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -90,7 +91,7 @@ public class Mesh implements Disposable {
     }
 
     private static void copyBuffer(VkQueue transferQueue, VkCommandPool transferCommandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, long bufferSize) {
-        try(VulkanSession vk = new VulkanSession()) {
+        try (VulkanSession vk = new VulkanSession()) {
             VkDevice logicalDevice = transferQueue.getDevice();
             VkCommandBufferAllocateInfo commandBufferAllocateInfo = VkCommandBufferAllocateInfo.calloc(vk.stack())
                     .sType$Default()
@@ -123,7 +124,7 @@ public class Mesh implements Disposable {
 
     @Override
     public void dispose() {
-        try(VulkanSession vk = new VulkanSession()) {
+        try (VulkanSession vk = new VulkanSession()) {
             vk.destroyBuffer(logicalDevice, vertexBuffer, null);
             vk.destroyBuffer(logicalDevice, indexBuffer, null);
 
