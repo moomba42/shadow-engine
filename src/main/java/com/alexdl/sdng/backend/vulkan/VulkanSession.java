@@ -75,6 +75,12 @@ public class VulkanSession implements AutoCloseable {
         return layers;
     }
 
+    public @Nonnull VkPhysicalDeviceProperties getPhysicalDeviceProperties(@Nonnull VkPhysicalDevice physicalDevice) {
+        VkPhysicalDeviceProperties properties = VkPhysicalDeviceProperties.malloc(stack);
+        vkGetPhysicalDeviceProperties(physicalDevice, properties);
+        return properties;
+    }
+
     public @Nonnull VkQueueFamilyProperties.Buffer getPhysicalDeviceQueueFamilyProperties(@Nonnull VkPhysicalDevice physicalDevice) {
         IntBuffer queueFamilyCountPointer = stack.mallocInt(1);
         vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamilyCountPointer, null);

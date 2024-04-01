@@ -26,5 +26,13 @@ To address this:
 ### GLFW windows
 If using GLFW make sure to set the `-XstartOnFirstThread` JVM argument, otherwise the program will crash instantly.
 
+### Shader compilation
+Run the following code:
+```shell
+cd src/main/resources/shaders
+/Users/adlugosz/VulkanSDK/1.3.275.0/macOS/bin/glslangValidator -V shader.vert
+/Users/adlugosz/VulkanSDK/1.3.275.0/macOS/bin/glslangValidator -V shader.frag
+```
+
 ## Required reads
 1. LWJGL3 memory management: https://blog.lwjgl.org/memory-management-in-lwjgl-3/

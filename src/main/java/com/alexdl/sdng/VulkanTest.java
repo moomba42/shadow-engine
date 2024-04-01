@@ -33,7 +33,9 @@ public class VulkanTest {
                 angle -= 360.0;
             }
 
-            renderer.updateModel(new Matrix4f().identity().rotate((float) Math.toRadians(angle), 0, 1, 0));
+            renderer.updateModel(0, new Matrix4f().identity().translate(-2.0f, 0.0f, -5.0f).rotate((float) Math.toRadians(angle), 0, 1, 0));
+            renderer.updateModel(1, new Matrix4f().identity().translate(2.0f, 0.0f, -5.0f).rotate((float) Math.toRadians(-angle), 1, 0, 0));
+
             renderer.draw();
         }
 

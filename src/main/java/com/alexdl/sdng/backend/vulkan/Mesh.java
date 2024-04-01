@@ -2,6 +2,7 @@ package com.alexdl.sdng.backend.vulkan;
 
 import com.alexdl.sdng.backend.Disposable;
 import com.alexdl.sdng.backend.vulkan.structs.VertexData;
+import org.joml.Matrix4f;
 import org.lwjgl.vulkan.VkBuffer;
 import org.lwjgl.vulkan.VkBufferCopy;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -25,6 +26,7 @@ public class Mesh implements Disposable {
     private final int indexCount;
     private final VkBuffer indexBuffer;
     private final VkDevice logicalDevice;
+    private final Matrix4f transform;
 
     public Mesh(@Nonnull VkQueue transferQueue,
                 @Nonnull VkCommandPool transferCommandPool,
@@ -34,6 +36,7 @@ public class Mesh implements Disposable {
         this.logicalDevice = transferQueue.getDevice();
         this.vertexBuffer = createVertexBuffer(vertexData, transferQueue, transferCommandPool);
         this.indexBuffer = createIndexBuffer(indexData, transferQueue, transferCommandPool);
+        this.transform = new Matrix4f().identity();
     }
 
     public VkBuffer getVertexBuffer() {
@@ -46,6 +49,10 @@ public class Mesh implements Disposable {
 
     public VkBuffer getIndexBuffer() {
         return indexBuffer;
+    }
+
+    public Matrix4f getTransform() {
+        return transform;
     }
 
     private static VkBuffer createVertexBuffer(VertexData.Buffer vertexData, VkQueue transferQueue, VkCommandPool transferCommandPool) {

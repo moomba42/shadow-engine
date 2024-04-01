@@ -17,11 +17,10 @@ import static org.lwjgl.system.MemoryUtil.*;
 
 public class SceneData extends Struct<SceneData> implements NativeResource {
     public static final int SIZE_BYTES, ALIGNMENT_BYTES;
-    public static final int FIELD_PROJECTION, FIELD_VIEW, FIELD_MODEL;
+    public static final int FIELD_PROJECTION, FIELD_VIEW;
 
     static {
         Layout layout = __struct(
-                __member(MATRIX_4F_SIZE_BYTES),
                 __member(MATRIX_4F_SIZE_BYTES),
                 __member(MATRIX_4F_SIZE_BYTES)
         );
@@ -31,16 +30,14 @@ public class SceneData extends Struct<SceneData> implements NativeResource {
 
         FIELD_PROJECTION = layout.offsetof(0);
         FIELD_VIEW = layout.offsetof(1);
-        FIELD_MODEL = layout.offsetof(2);
     }
 
-    private final FloatBuffer projection, view, model;
+    private final FloatBuffer projection, view;
 
     protected SceneData(long address, @Nullable ByteBuffer container) {
         super(address, container);
         this.projection = MemoryUtil.memFloatBuffer(address() + FIELD_PROJECTION, MATRIX_4F_SIZE_FLOATS);
         this.view = MemoryUtil.memFloatBuffer(address() + FIELD_VIEW, MATRIX_4F_SIZE_FLOATS);
-        this.model = MemoryUtil.memFloatBuffer(address() + FIELD_MODEL, MATRIX_4F_SIZE_FLOATS);
     }
 
     public SceneData(ByteBuffer container) {
@@ -53,15 +50,6 @@ public class SceneData extends Struct<SceneData> implements NativeResource {
 
     public static SceneData calloc(MemoryStack stack) {
         return new SceneData(stack.ncalloc(ALIGNMENT_BYTES, 1, SIZE_BYTES), null);
-    }
-
-
-    public SceneData model(Matrix4f value) {
-        value.get(0, model);
-        return this;
-    }
-    public Matrix4f model() {
-        return new Matrix4f(model);
     }
 
     public SceneData view(Matrix4f value) {
@@ -80,8 +68,7 @@ public class SceneData extends Struct<SceneData> implements NativeResource {
         return new Matrix4f(projection);
     }
 
-    public SceneData set(Matrix4f model, Matrix4f view, Matrix4f projection) {
-        model(model);
+    public SceneData set(Matrix4f view, Matrix4f projection) {
         view(view);
         projection(projection);
         return this;
