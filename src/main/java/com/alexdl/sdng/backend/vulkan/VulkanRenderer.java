@@ -5,6 +5,7 @@ import com.alexdl.sdng.backend.Disposable;
 import com.alexdl.sdng.backend.glfw.GLFWRuntimeException;
 import com.alexdl.sdng.backend.glfw.GlfwWindow;
 import com.alexdl.sdng.backend.vulkan.structs.ModelData;
+import com.alexdl.sdng.backend.vulkan.structs.PushConstantData;
 import com.alexdl.sdng.backend.vulkan.structs.SceneData;
 import com.alexdl.sdng.backend.vulkan.structs.VertexData;
 import org.joml.Matrix4f;
@@ -52,6 +53,8 @@ public class VulkanRenderer implements Disposable {
     private final List<VertexData.Buffer> meshData;
     private final List<Mesh> meshes;
 
+    private final PushConstantData pushConstantData;
+
     private final VkQueue graphicsQueue;
     private final VkQueue presentQueue;
 
@@ -98,6 +101,8 @@ public class VulkanRenderer implements Disposable {
         QueueIndices queueIndices = findQueueIndices(physicalDevice, surface);
         graphicsQueue = findFirstQueueByFamily(logicalDevice, queueIndices.graphical());
         presentQueue = findFirstQueueByFamily(logicalDevice, queueIndices.surfaceSupporting());
+
+        pushConstantData = PushConstantData.calloc();
 
         descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
         pipelineLayout = createPipelineLayout(logicalDevice, List.of(descriptorSetLayout));
@@ -306,6 +311,9 @@ public class VulkanRenderer implements Disposable {
 
     public void updateModel(int modelId, Matrix4f transform) {
         meshes.get(modelId).getTransform().set(transform);
+    }
+    public void updatePushConstant(Matrix4f transform) {
+        pushConstantData.model(transform);
     }
 
     private void updateUniforms(int imageIndex) {
@@ -760,10 +768,15 @@ public class VulkanRenderer implements Disposable {
         try (VulkanSession vk = new VulkanSession()) {
             LongBuffer descriptorSetLayoutsBuffer = toAddressBuffer(descriptorSetLayouts, vk.stack(), VkDescriptorSetLayout::address);
 
+             VkPushConstantRange.Buffer pushConstantRange = VkPushConstantRange.calloc(1, vk.stack())
+                        .stageFlags(VK_SHADER_STAGE_VERTEX_BIT)
+                        .offset(0)
+                        .size(PushConstantData.SIZE_BYTES);
+
             VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(vk.stack())
                     .sType$Default()
                     .pSetLayouts(descriptorSetLayoutsBuffer)
-                    .pPushConstantRanges(null);
+                    .pPushConstantRanges(pushConstantRange);
 
             return vk.createPipelineLayout(logicalDevice, pipelineLayoutCreateInfo, null);
         }
@@ -1135,6 +1148,7 @@ public class VulkanRenderer implements Disposable {
             throwIfFailed(vkBeginCommandBuffer(commandBuffer, commandBufferBeginInfo));
             vkCmdBeginRenderPass(commandBuffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
+            nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantData.SIZE_BYTES, pushConstantData.address());
 
             for (int meshIndex = 0; meshIndex < meshes.size(); meshIndex++) {
                 Mesh mesh = meshes.get(meshIndex);

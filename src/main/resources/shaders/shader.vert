@@ -12,11 +12,15 @@ layout(binding = 1) uniform Model {
     mat4 model;
 } model;
 
+layout(push_constant) uniform PushConstant {
+    mat4 model;
+} pushConstant;
+
 layout(location = 0) out vec3 out_color;
 
 void main() {
     out_color = color;
-    gl_Position = scene.projection * scene.view * model.model * vec4(position, 1.0);
+    gl_Position = scene.projection * scene.view * model.model * pushConstant.model * vec4(position, 1.0);
 }
 
 

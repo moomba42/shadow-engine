@@ -16,32 +16,25 @@ import static com.alexdl.sdng.backend.vulkan.SizeConstants.MATRIX_4F_SIZE_FLOATS
 import static org.lwjgl.system.MemoryUtil.*;
 
 public class ModelData extends Struct<ModelData> implements NativeResource {
-    private static final long MIN_SIZE_BYTES = MATRIX_4F_SIZE_BYTES;
+    private static final long PACKED_SIZE_BYTES = MATRIX_4F_SIZE_BYTES;
     private final long sizeBytes;
 
     private final FloatBuffer model;
 
-    protected ModelData(long address, @Nullable ByteBuffer container, long sizeBytes) {
+    protected ModelData(long address, long sizeBytes, @Nullable ByteBuffer container) {
         super(address, container);
 
         this.sizeBytes = sizeBytes;
         this.model = MemoryUtil.memFloatBuffer(address(), MATRIX_4F_SIZE_FLOATS);
     }
 
-    protected ModelData(long address, @Nullable ByteBuffer container) {
-        super(address, container);
-
-        this.sizeBytes = getAlignedSizeBytes(0);
-        this.model = MemoryUtil.memFloatBuffer(address(), MATRIX_4F_SIZE_FLOATS);
-    }
-
-    public static long getAlignedSizeBytes(long alignmentBytes) {
-        return (MIN_SIZE_BYTES + alignmentBytes - 1) & ~(alignmentBytes - 1);
+    protected ModelData(long address, long sizeBytes) {
+        this(address, sizeBytes, null);
     }
 
     public static ModelData alignedAlloc(int alignmentBytes) {
         long alignedSizeBytes = getAlignedSizeBytes(alignmentBytes);
-        return new ModelData(nmemAlignedAlloc(alignedSizeBytes, alignedSizeBytes), null, alignedSizeBytes);
+        return new ModelData(nmemAlignedAlloc(alignedSizeBytes, alignedSizeBytes), alignedSizeBytes);
     }
 
     public static ModelData.Buffer alignedAlloc(long alignmentBytes, int count) {
@@ -58,20 +51,20 @@ public class ModelData extends Struct<ModelData> implements NativeResource {
         return new Matrix4f(model);
     }
 
-    public ModelData set(Matrix4f model) {
-        model(model);
-        return this;
-    }
-
     public ModelData set(ModelData src) {
         memCopy(src.address(), address(), sizeBytes);
         return this;
     }
 
+    private static long getAlignedSizeBytes(long alignmentBytes) {
+        // In the equation (size + alignment - 1) & ~(alignment - 1),
+        // the ~(x-1) can be replaced with -x, since java uses two's complement
+        return (PACKED_SIZE_BYTES + alignmentBytes - 1) & -alignmentBytes;
+    }
 
     @Override
     protected @Nonnull ModelData create(long address, @Nullable ByteBuffer container) {
-        return new ModelData(address, container, sizeBytes);
+        return new ModelData(address, sizeBytes, container);
     }
 
     @Override
@@ -87,9 +80,9 @@ public class ModelData extends Struct<ModelData> implements NativeResource {
     public static class Buffer extends StructBuffer<ModelData, ModelData.Buffer> implements NativeResource {
         private final ModelData elementFactory;
 
-        protected Buffer(long address, long alignedSizeBytes, int capacity) {
+        protected Buffer(long address, long elementSizeBytes, int capacity) {
             super(address, null, -1, 0, capacity, capacity);
-            this.elementFactory = new ModelData(-1, null, alignedSizeBytes);
+            this.elementFactory = new ModelData(-1, elementSizeBytes, null);
         }
 
         @Override

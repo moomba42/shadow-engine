@@ -19,7 +19,7 @@ public class VulkanTest {
         VulkanRenderer renderer = new VulkanRenderer(window, new Configuration(enableDebugging));
 
         double angle = 0.0;
-        double deltaTime = 0.0;
+        double deltaTime;
         double lastTime = 0.0;
 
         while(!glfwWindowShouldClose(window.address())) {
@@ -35,6 +35,7 @@ public class VulkanTest {
 
             renderer.updateModel(0, new Matrix4f().identity().translate(-2.0f, 0.0f, -5.0f).rotate((float) Math.toRadians(angle), 0, 1, 0));
             renderer.updateModel(1, new Matrix4f().identity().translate(2.0f, 0.0f, -5.0f).rotate((float) Math.toRadians(-angle), 1, 0, 0));
+            renderer.updatePushConstant(new Matrix4f().identity().translate((float) (Math.sin(now)), (float)(Math.cos(now) * 2.0), 0.0f));
 
             renderer.draw();
         }
