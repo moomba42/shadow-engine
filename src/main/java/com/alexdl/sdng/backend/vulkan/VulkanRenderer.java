@@ -4,10 +4,11 @@ import com.alexdl.sdng.Configuration;
 import com.alexdl.sdng.backend.Disposable;
 import com.alexdl.sdng.backend.glfw.GLFWRuntimeException;
 import com.alexdl.sdng.backend.glfw.GlfwWindow;
-import com.alexdl.sdng.backend.vulkan.structs.ModelData;
-import com.alexdl.sdng.backend.vulkan.structs.PushConstantData;
-import com.alexdl.sdng.backend.vulkan.structs.SceneData;
-import com.alexdl.sdng.backend.vulkan.structs.VertexData;
+import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
+import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
+import com.alexdl.sdng.backend.vulkan.structs.PushConstantStruct;
+import com.alexdl.sdng.backend.vulkan.structs.SceneDataStruct;
+import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
@@ -49,11 +50,11 @@ public class VulkanRenderer implements Disposable {
 
     private final VkDevice logicalDevice;
 
-    private final SceneData sceneData;
-    private final List<VertexData.Buffer> meshData;
+    private final SceneDataStruct sceneData;
+    private final List<VertexDataStruct.Buffer> meshData;
     private final List<Mesh> meshes;
 
-    private final PushConstantData pushConstantData;
+    private final PushConstantStruct pushConstant;
 
     private final VkQueue graphicsQueue;
     private final VkQueue presentQueue;
@@ -75,7 +76,7 @@ public class VulkanRenderer implements Disposable {
     private final List<VkCommandBuffer> swapchainCommandBuffers;
     private final List<VkBuffer> sceneUniformBuffers;
     private final List<VkBuffer> modelUniformBuffers;
-    private final ModelData.Buffer modelUniformTransferSpace;
+    private final MemoryBlockBuffer<ModelDataStruct> modelUniformTransferSpace;
     private final List<VkDescriptorSet> descriptorSets;
 
     // For each frame
@@ -102,7 +103,7 @@ public class VulkanRenderer implements Disposable {
         graphicsQueue = findFirstQueueByFamily(logicalDevice, queueIndices.graphical());
         presentQueue = findFirstQueueByFamily(logicalDevice, queueIndices.surfaceSupporting());
 
-        pushConstantData = PushConstantData.calloc();
+        pushConstant = new PushConstantStruct();
 
         descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
         pipelineLayout = createPipelineLayout(logicalDevice, List.of(descriptorSetLayout));
@@ -121,38 +122,39 @@ public class VulkanRenderer implements Disposable {
                         100.0f);
         projection.set(1, 1, projection.getRowColumn(1, 1) * -1);
 
-        sceneData = SceneData.calloc().set(
-                new Matrix4f().lookAt(
+        sceneData = new SceneDataStruct()
+                .projection(projection)
+                .view(new Matrix4f().lookAt(
                         new Vector3f(0.0f, 0.0f, 1.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
-                        new Vector3f(0.0f, 1.0f, 0.0f)),
-                projection
-        );
+                        new Vector3f(0.0f, 1.0f, 0.0f)));
 
-        long minUniformBufferOffsetAlignment;
+        int minUniformBufferOffsetAlignment;
         try (VulkanSession vk = new VulkanSession()) {
-            minUniformBufferOffsetAlignment = vk.getPhysicalDeviceProperties(physicalDevice).limits().minUniformBufferOffsetAlignment();
+            minUniformBufferOffsetAlignment = (int) vk.getPhysicalDeviceProperties(physicalDevice).limits().minUniformBufferOffsetAlignment();
         }
 
-        modelUniformTransferSpace = ModelData.alignedAlloc(minUniformBufferOffsetAlignment, MAX_OBJECTS);
-        sceneUniformBuffers = createSceneUniformBuffers(logicalDevice, swapchainImages.size());
-        modelUniformBuffers = createModelUniformBuffers(logicalDevice, swapchainImages.size(), modelUniformTransferSpace.limit(), modelUniformTransferSpace.sizeof());
+        modelUniformTransferSpace = new MemoryBlockBuffer<>(MAX_OBJECTS, new ModelDataStruct(), minUniformBufferOffsetAlignment);
+        sceneUniformBuffers = createUniformBuffers(logicalDevice, swapchainImages.size(), sceneData.size());
+        modelUniformBuffers = createUniformBuffers(logicalDevice, swapchainImages.size(), modelUniformTransferSpace.size());
         descriptorPool = createDescriptorPool(logicalDevice, sceneUniformBuffers.size(), modelUniformBuffers.size(), swapchainImages.size());
         descriptorSets = createDescriptorSets(logicalDevice, descriptorPool, descriptorSetLayout, swapchainImages.size());
-        connectDescriptorSetsToUniformBuffers(logicalDevice, descriptorSets, sceneUniformBuffers, SceneData.SIZE_BYTES, modelUniformBuffers, modelUniformTransferSpace.sizeof());
+        connectDescriptorSetsToUniformBuffers(logicalDevice, descriptorSets, sceneUniformBuffers, sceneData.size(), modelUniformBuffers, modelUniformTransferSpace.elementSize());
 
-        VertexData.Buffer quad1 = VertexData.create(new float[]{
+        VertexDataStruct.Buffer quad1 = new VertexDataStruct.Buffer(new float[]{
                 -0.4f, 0.4f, 0, 1, 0, 0,
                 -0.4f, -0.4f, 0, 0, 1, 0,
                 0.4f, -0.4f, 0, 0, 0, 1,
                 0.4f, 0.4f, 0, 1, 1, 0
         });
-        VertexData.Buffer quad2 = VertexData.create(new float[]{
+
+        VertexDataStruct.Buffer quad2 = new VertexDataStruct.Buffer(new float[]{
                 -0.25f, 0.6f, 0, 1, 0, 0,
                 -0.25f, -0.6f, 0, 0, 1, 0,
                 0.25f, -0.6f, 0, 0, 0, 1,
                 0.25f, 0.6f, 0, 1, 1, 0
         });
+
         IntBuffer quadIndices = BufferUtils.createIntBuffer(6).put(0, new int[]{0, 1, 2, 2, 3, 0});
         meshData = List.of(quad1, quad2);
         meshes = List.of(
@@ -205,18 +207,10 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private List<VkBuffer> createSceneUniformBuffers(VkDevice logicalDevice, int bufferCount) {
+    private List<VkBuffer> createUniformBuffers(VkDevice logicalDevice, int bufferCount, int bufferSize) {
         List<VkBuffer> buffers = new ArrayList<>(bufferCount);
         for (int i = 0; i < bufferCount; i++) {
-            buffers.add(i, createBuffer(logicalDevice, SceneData.SIZE_BYTES, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
-        }
-        return buffers;
-    }
-
-    private List<VkBuffer> createModelUniformBuffers(VkDevice logicalDevice, int bufferCount, int elementCount, long elementSizeBytes) {
-        List<VkBuffer> buffers = new ArrayList<>(bufferCount);
-        for (int i = 0; i < bufferCount; i++) {
-            buffers.add(i, createBuffer(logicalDevice, elementCount * elementSizeBytes, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+            buffers.add(i, createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
         }
         return buffers;
     }
@@ -225,8 +219,8 @@ public class VulkanRenderer implements Disposable {
     public void dispose() {
         throwIfFailed(vkDeviceWaitIdle(logicalDevice));
 
-        modelUniformTransferSpace.close();
-        sceneData.close();
+        modelUniformTransferSpace.dispose();
+        sceneData.dispose();
 
         vkDestroyDescriptorPool(logicalDevice, descriptorPool.address(), null);
         vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout.address(), null);
@@ -245,8 +239,8 @@ public class VulkanRenderer implements Disposable {
         for (Mesh mesh : meshes) {
             mesh.dispose();
         }
-        for (VertexData.Buffer data : meshData) {
-            data.close();
+        for (VertexDataStruct.Buffer data : meshData) {
+            data.dispose();
         }
         frameDrawFences.forEach(fence -> vkDestroyFence(logicalDevice, fence.address(), null));
         frameImageAvailableSemaphores.forEach(semaphore -> vkDestroySemaphore(logicalDevice, semaphore.address(), null));
@@ -312,26 +306,26 @@ public class VulkanRenderer implements Disposable {
     public void updateModel(int modelId, Matrix4f transform) {
         meshes.get(modelId).getTransform().set(transform);
     }
+
     public void updatePushConstant(Matrix4f transform) {
-        pushConstantData.model(transform);
+        pushConstant.transform(transform);
     }
 
     private void updateUniforms(int imageIndex) {
         try (VulkanSession vk = new VulkanSession()) {
             VkDeviceMemory sceneMemory = sceneUniformBuffers.get(imageIndex).memory();
             assert sceneMemory != null;
-            ByteBuffer sceneTargetBuffer = vk.mapMemoryByte(logicalDevice, sceneMemory, 0, SceneData.SIZE_BYTES, 0);
-            //noinspection resource
-            new SceneData(sceneTargetBuffer).set(sceneData);
+            long sceneTarget = vk.mapMemoryPointer(logicalDevice, sceneMemory, 0, sceneData.size(), 0);
+            memCopy(sceneData.address(), sceneTarget, sceneData.size());
             vk.unmapMemory(logicalDevice, sceneMemory);
 
 
             for (int i = 0; i < meshes.size(); i++) {
-                modelUniformTransferSpace.get(i).model(meshes.get(i).getTransform());
+                modelUniformTransferSpace.get(i).transform(meshes.get(i).getTransform());
             }
             VkDeviceMemory modelMemory = modelUniformBuffers.get(imageIndex).memory();
             assert modelMemory != null;
-            long modelBufferSizeBytes = (long) modelUniformTransferSpace.limit() * modelUniformTransferSpace.sizeof();
+            long modelBufferSizeBytes = modelUniformTransferSpace.size();
             long modelTarget = vk.mapMemoryPointer(logicalDevice, modelMemory, 0, modelBufferSizeBytes, 0);
             memCopy(modelUniformTransferSpace.address(), modelTarget, modelBufferSizeBytes);
             vk.unmapMemory(logicalDevice, modelMemory);
@@ -768,10 +762,10 @@ public class VulkanRenderer implements Disposable {
         try (VulkanSession vk = new VulkanSession()) {
             LongBuffer descriptorSetLayoutsBuffer = toAddressBuffer(descriptorSetLayouts, vk.stack(), VkDescriptorSetLayout::address);
 
-             VkPushConstantRange.Buffer pushConstantRange = VkPushConstantRange.calloc(1, vk.stack())
-                        .stageFlags(VK_SHADER_STAGE_VERTEX_BIT)
-                        .offset(0)
-                        .size(PushConstantData.SIZE_BYTES);
+            VkPushConstantRange.Buffer pushConstantRange = VkPushConstantRange.calloc(1, vk.stack())
+                    .stageFlags(VK_SHADER_STAGE_VERTEX_BIT)
+                    .offset(0)
+                    .size(PushConstantStruct.SIZE);
 
             VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(vk.stack())
                     .sType$Default()
@@ -884,7 +878,7 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private void connectDescriptorSetsToUniformBuffers(VkDevice logicalDevice, List<VkDescriptorSet> descriptorSets, List<VkBuffer> sceneUniformBuffers, long sceneUniformSize, List<VkBuffer> modelUniformBuffers, long modelUniformSize) {
+    private void connectDescriptorSetsToUniformBuffers(VkDevice logicalDevice, List<VkDescriptorSet> descriptorSets, List<VkBuffer> sceneUniformBuffers, long sceneUniformSize, List<VkBuffer> modelUniformBuffers, long modelUniformElementSize) {
         assert descriptorSets.size() == sceneUniformBuffers.size();
         assert descriptorSets.size() == modelUniformBuffers.size();
         try (VulkanSession vk = new VulkanSession()) {
@@ -906,7 +900,7 @@ public class VulkanRenderer implements Disposable {
                 VkDescriptorBufferInfo.Buffer modelDescriptorBufferInfos = VkDescriptorBufferInfo.calloc(1, vk.stack())
                         .buffer(modelUniformBuffers.get(i).address())
                         .offset(0)
-                        .range(modelUniformSize);
+                        .range(modelUniformElementSize);
                 setWrites.get(1)
                         .sType$Default()
                         .dstSet(descriptorSets.get(i).address())
@@ -1148,7 +1142,7 @@ public class VulkanRenderer implements Disposable {
             throwIfFailed(vkBeginCommandBuffer(commandBuffer, commandBufferBeginInfo));
             vkCmdBeginRenderPass(commandBuffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
-            nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantData.SIZE_BYTES, pushConstantData.address());
+            nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantStruct.SIZE, pushConstant.address());
 
             for (int meshIndex = 0; meshIndex < meshes.size(); meshIndex++) {
                 Mesh mesh = meshes.get(meshIndex);
@@ -1166,7 +1160,7 @@ public class VulkanRenderer implements Disposable {
                         VK_INDEX_TYPE_UINT32
                 );
 
-                int dynamicOffset = meshIndex * modelUniformTransferSpace.sizeof();
+                int dynamicOffset = meshIndex * modelUniformTransferSpace.elementSize();
                 vkCmdBindDescriptorSets(
                         commandBuffer,
                         VK_PIPELINE_BIND_POINT_GRAPHICS,

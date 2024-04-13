@@ -1,7 +1,7 @@
 package com.alexdl.sdng.backend.vulkan;
 
 import com.alexdl.sdng.backend.Disposable;
-import com.alexdl.sdng.backend.vulkan.structs.VertexData;
+import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
 import org.joml.Matrix4f;
 import org.lwjgl.vulkan.VkBuffer;
 import org.lwjgl.vulkan.VkBufferCopy;
@@ -30,7 +30,7 @@ public class Mesh implements Disposable {
 
     public Mesh(@Nonnull VkQueue transferQueue,
                 @Nonnull VkCommandPool transferCommandPool,
-                @Nonnull VertexData.Buffer vertexData,
+                @Nonnull VertexDataStruct.Buffer vertexData,
                 @Nonnull IntBuffer indexData) {
         this.indexCount = indexData.limit();
         this.logicalDevice = transferQueue.getDevice();
@@ -55,9 +55,9 @@ public class Mesh implements Disposable {
         return transform;
     }
 
-    private static VkBuffer createVertexBuffer(VertexData.Buffer vertexData, VkQueue transferQueue, VkCommandPool transferCommandPool) {
+    private static VkBuffer createVertexBuffer(VertexDataStruct.Buffer vertexData, VkQueue transferQueue, VkCommandPool transferCommandPool) {
         try (VulkanSession vk = new VulkanSession()) {
-            long bufferSize = (long) vertexData.sizeof() * vertexData.limit();
+            long bufferSize = vertexData.size();
             VkDevice logicalDevice = transferQueue.getDevice();
             VkBuffer stagingBuffer = createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
             assert stagingBuffer.memory() != null;
