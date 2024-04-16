@@ -6,6 +6,8 @@ import org.joml.Matrix4f;
 
 import java.util.Objects;
 
+import static java.lang.Math.sin;
+import static java.lang.Math.tan;
 import static org.lwjgl.glfw.GLFW.*;
 
 public class VulkanTest {
@@ -18,7 +20,6 @@ public class VulkanTest {
 
         VulkanRenderer renderer = new VulkanRenderer(window, new Configuration(enableDebugging));
 
-        double angle = 0.0;
         double deltaTime;
         double lastTime = 0.0;
 
@@ -28,14 +29,14 @@ public class VulkanTest {
             double now = glfwGetTime();
             deltaTime = now - lastTime;
             lastTime = now;
-            angle += 100.0 * deltaTime;
-            while(angle > 360.0) {
-                angle -= 360.0;
-            }
 
-            renderer.updateModel(0, new Matrix4f().identity().translate(-2.0f, 0.0f, -5.0f).rotate((float) Math.toRadians(angle), 0, 1, 0));
-            renderer.updateModel(1, new Matrix4f().identity().translate(2.0f, 0.0f, -5.0f).rotate((float) Math.toRadians(-angle), 1, 0, 0));
-            renderer.updatePushConstant(new Matrix4f().identity().translate((float) (Math.sin(now)), (float)(Math.cos(now) * 2.0), 0.0f));
+            renderer.updateModel(0, new Matrix4f().identity()
+                    .translate(0.0f, 0.0f, -2.0f)
+                    .rotate((float) tan(sin(sin(now * 3))), 1, 0, 0));
+            renderer.updateModel(1, new Matrix4f().identity()
+                    .translate(0.0f, 0.0f, -2.0f)
+                    .rotate((float) tan(sin(now)) * 2, 0, 0, 1));
+            renderer.updatePushConstant(new Matrix4f().identity().rotate((float) now / 2, 0, 1, 0));
 
             renderer.draw();
         }

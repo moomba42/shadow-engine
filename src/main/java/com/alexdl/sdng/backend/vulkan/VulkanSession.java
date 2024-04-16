@@ -3,6 +3,7 @@ package com.alexdl.sdng.backend.vulkan;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
+import org.lwjgl.vulkan.enums.VkFormat;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 
 import javax.annotation.Nonnull;
@@ -300,5 +301,27 @@ public class VulkanSession implements AutoCloseable {
 
     public void updateDescriptorSets(@Nonnull VkDevice logicalDevice, @Nullable VkWriteDescriptorSet.Buffer descriptorSetWrites, @Nullable VkCopyDescriptorSet.Buffer descriptorSetCopies) {
         vkUpdateDescriptorSets(logicalDevice, descriptorSetWrites, descriptorSetCopies);
+    }
+
+    public @Nonnull VkFormatProperties getPhysicalDeviceFormatProperties(@Nonnull VkPhysicalDevice physicalDevice, @Nonnull VkFormat format) {
+        VkFormatProperties properties = VkFormatProperties.malloc(stack);
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format.getValue(), properties);
+        return properties;
+    }
+
+    public @Nonnull VkImage createImage(@Nonnull VkDevice logicalDevice, @Nonnull VkImageCreateInfo createInfo, @Nullable VkAllocationCallbacks allocator) {
+        LongBuffer pointer = stack.mallocLong(1);
+        throwIfFailed(vkCreateImage(logicalDevice, createInfo, allocator, pointer));
+        return new VkImage(pointer.get(0));
+    }
+
+    public @Nonnull VkMemoryRequirements getImageMemoryRequirements(@Nonnull VkDevice logicalDevice, @Nonnull VkImage image) {
+        VkMemoryRequirements memoryRequirements = VkMemoryRequirements.malloc(stack);
+        vkGetImageMemoryRequirements(logicalDevice, image.address(), memoryRequirements);
+        return memoryRequirements;
+    }
+
+    public void bindImageMemory(@Nonnull VkDevice logicalDevice, @Nonnull VkImage image, @Nonnull VkDeviceMemory deviceMemory, long memoryOffset) {
+        throwIfFailed(vkBindImageMemory(logicalDevice, image.address(), deviceMemory.address(), memoryOffset));
     }
 }

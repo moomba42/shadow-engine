@@ -16,6 +16,7 @@ import org.lwjgl.PointerBuffer;
 import org.lwjgl.vulkan.*;
 import org.lwjgl.vulkan.enums.VkColorSpaceKHR;
 import org.lwjgl.vulkan.enums.VkFormat;
+import org.lwjgl.vulkan.enums.VkImageTiling;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 import org.lwjgl.vulkan.enums.VkSharingMode;
 
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.alexdl.sdng.backend.vulkan.VulkanUtils.*;
@@ -59,7 +61,6 @@ public class VulkanRenderer implements Disposable {
     private final VkQueue graphicsQueue;
     private final VkQueue presentQueue;
 
-
     private final SwapchainImageConfig swapchainImageConfig;
     private final VkSwapchainKHR swapchain;
 
@@ -71,6 +72,7 @@ public class VulkanRenderer implements Disposable {
     private final VkCommandPool graphicsCommandPool;
 
     // For each swapchain image
+    private final Image depthBufferImage;
     private final List<SwapchainImage> swapchainImages;
     private final List<VkFramebuffer> swapchainFramebuffers;
     private final List<VkCommandBuffer> swapchainCommandBuffers;
@@ -104,14 +106,15 @@ public class VulkanRenderer implements Disposable {
         presentQueue = findFirstQueueByFamily(logicalDevice, queueIndices.surfaceSupporting());
 
         pushConstant = new PushConstantStruct();
+        depthBufferImage = createDepthBufferImage(logicalDevice, swapchainImageConfig.extent().width(), swapchainImageConfig.extent().height());
 
         descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
         pipelineLayout = createPipelineLayout(logicalDevice, List.of(descriptorSetLayout));
-        renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format());
+        renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format(), depthBufferImage.format());
         graphicsPipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
         graphicsCommandPool = createCommandPool(logicalDevice, queueIndices.graphical());
 
-        swapchainFramebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages);
+        swapchainFramebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages, depthBufferImage);
         swapchainCommandBuffers = createCommandBuffers(logicalDevice, graphicsCommandPool, swapchainFramebuffers);
 
         Matrix4f projection = new Matrix4f()
@@ -218,6 +221,10 @@ public class VulkanRenderer implements Disposable {
     @Override
     public void dispose() {
         throwIfFailed(vkDeviceWaitIdle(logicalDevice));
+
+        vkDestroyImageView(logicalDevice, depthBufferImage.view().address(), null);
+        vkDestroyImage(logicalDevice, depthBufferImage.image().address(), null);
+        vkFreeMemory(logicalDevice, depthBufferImage.memory().address(), null);
 
         modelUniformTransferSpace.dispose();
         sceneData.dispose();
@@ -747,7 +754,7 @@ public class VulkanRenderer implements Disposable {
                             .b(VK_COMPONENT_SWIZZLE_B)
                             .a(VK_COMPONENT_SWIZZLE_A))
                     .subresourceRange(VkImageSubresourceRange.malloc(vk.stack())
-                            .aspectMask(aspectFlags.flags())
+                            .aspectMask(aspectFlags.value())
                             .baseMipLevel(0)
                             .levelCount(1)
                             .baseArrayLayer(0)
@@ -776,12 +783,13 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private static VkRenderPass createRenderPass(VkDevice logicalDevice, VkFormat format) {
+    private static VkRenderPass createRenderPass(VkDevice logicalDevice, VkFormat colorFormat, VkFormat depthBufferFormat) {
         try (VulkanSession vk = new VulkanSession()) {
-            VkAttachmentDescription.Buffer attachments = VkAttachmentDescription.malloc(1)
-                    // Color Attachment
-                    .flags(0)
-                    .format(format.getValue())
+            VkAttachmentDescription.Buffer attachments = VkAttachmentDescription.calloc(2, vk.stack());
+            // Color Attachment
+            // noinspection resource
+            attachments.get(0)
+                    .format(colorFormat.getValue())
                     .samples(VK_SAMPLE_COUNT_1_BIT)
                     .loadOp(VK_ATTACHMENT_LOAD_OP_CLEAR)
                     .storeOp(VK_ATTACHMENT_STORE_OP_STORE)
@@ -789,25 +797,36 @@ public class VulkanRenderer implements Disposable {
                     .stencilStoreOp(VK_ATTACHMENT_STORE_OP_DONT_CARE)
                     .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
                     .finalLayout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+            // Depth Buffer Attachment
+            // noinspection resource
+            attachments.get(1)
+                    .format(depthBufferFormat.getValue())
+                    .samples(VK_SAMPLE_COUNT_1_BIT)
+                    .loadOp(VK_ATTACHMENT_LOAD_OP_CLEAR)
+                    .storeOp(VK_ATTACHMENT_STORE_OP_STORE)
+                    .stencilLoadOp(VK_ATTACHMENT_LOAD_OP_DONT_CARE)
+                    .stencilStoreOp(VK_ATTACHMENT_STORE_OP_DONT_CARE)
+                    .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+                    .finalLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
-
-            VkAttachmentReference.Buffer attachmentReferences = VkAttachmentReference.malloc(1)
-                    // Color Attachment Reference
+            VkAttachmentReference.Buffer colorAttachmentRefs = VkAttachmentReference.calloc(1, vk.stack())
+            // Color Attachment Reference
                     .attachment(0) // The index in the list that we pass to VkRenderPassCreateInfo.pAttachments
                     .layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            // Depth Attachment Reference
+            VkAttachmentReference depthAttachmentRef = VkAttachmentReference.calloc(vk.stack())
+                    .attachment(1) // The index in the list that we pass to VkRenderPassCreateInfo.pAttachments
+                    .layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
-            VkSubpassDescription.Buffer subpasses = VkSubpassDescription.malloc(1)
+            VkSubpassDescription.Buffer subpasses = VkSubpassDescription.calloc(1)
                     // Subpass 1
                     .pipelineBindPoint(VK_PIPELINE_BIND_POINT_GRAPHICS)
-                    .colorAttachmentCount(1)
-                    .pColorAttachments(attachmentReferences)
-                    .pInputAttachments(null)
-                    .pResolveAttachments(null)
-                    .pDepthStencilAttachment(null)
-                    .pPreserveAttachments(null);
+                    .colorAttachmentCount(colorAttachmentRefs.limit())
+                    .pColorAttachments(colorAttachmentRefs)
+                    .pDepthStencilAttachment(depthAttachmentRef);
 
             // We need to determine when layout transitions occur using subpass dependencies
-            VkSubpassDependency.Buffer dependencies = VkSubpassDependency.malloc(2);
+            VkSubpassDependency.Buffer dependencies = VkSubpassDependency.malloc(2, vk.stack());
             // Conversion from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
             // Start converting after the external pipeline has completely finished and the reading has stopped there
             // End converting before we reach the color attachment output stage, before we read or write anything in that stage.
@@ -1028,6 +1047,14 @@ public class VulkanRenderer implements Disposable {
                     .attachmentCount(1)
                     .pAttachments(colorBlendAttachmentState);
 
+            VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo = VkPipelineDepthStencilStateCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .depthTestEnable(true)
+                    .depthWriteEnable(true)
+                    .depthCompareOp(VK_COMPARE_OP_LESS)
+                    .depthBoundsTestEnable(false)
+                    .stencilTestEnable(false);
+
             VkGraphicsPipelineCreateInfo.Buffer graphicsPipelineCreateInfos = VkGraphicsPipelineCreateInfo.calloc(1);
             //noinspection resource
             graphicsPipelineCreateInfos.get(0)
@@ -1039,7 +1066,7 @@ public class VulkanRenderer implements Disposable {
                     .pViewportState(viewportStateCreateInfo)
                     .pRasterizationState(rasterizationStateCreateInfo)
                     .pMultisampleState(multisampleStateCreateInfo)
-                    .pDepthStencilState(null)
+                    .pDepthStencilState(depthStencilStateCreateInfo)
                     .pColorBlendState(colorBlendStateCreateInfo)
                     .pDynamicState(null)
                     .layout(pipelineLayout.address())
@@ -1072,11 +1099,11 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private static List<VkFramebuffer> createFramebuffers(VkDevice logicalDevice, VkRenderPass renderPass, SwapchainImageConfig imageConfig, List<SwapchainImage> swapchainImages) {
+    private static List<VkFramebuffer> createFramebuffers(VkDevice logicalDevice, VkRenderPass renderPass, SwapchainImageConfig imageConfig, List<SwapchainImage> swapchainImages, Image depthBufferImage) {
         try (VulkanSession vk = new VulkanSession()) {
             List<VkFramebuffer> framebuffers = new ArrayList<>(swapchainImages.size());
             for (int i = 0; i < swapchainImages.size(); i++) {
-                LongBuffer attachments = vk.stack().longs(swapchainImages.get(i).view().address());
+                LongBuffer attachments = vk.stack().longs(swapchainImages.get(i).view().address(), depthBufferImage.view().address());
                 VkFramebufferCreateInfo framebufferCreateInfo = VkFramebufferCreateInfo.calloc(vk.stack())
                         .sType$Default()
                         .renderPass(renderPass.address())
@@ -1123,12 +1150,13 @@ public class VulkanRenderer implements Disposable {
             VkCommandBufferBeginInfo commandBufferBeginInfo = VkCommandBufferBeginInfo.calloc(vk.stack())
                     .sType$Default();
 
-            VkClearValue.Buffer clearValues = VkClearValue.calloc(1);
+            VkClearValue.Buffer clearValues = VkClearValue.calloc(2);
             clearValues.get(0).color()
                     .float32(0, 0.0f)
                     .float32(1, 0.0f)
                     .float32(2, 0.0f)
                     .float32(3, 1.0f);
+            clearValues.get(1).depthStencil().set(1.0f, 0);
 
             VkRenderPassBeginInfo renderPassBeginInfo = VkRenderPassBeginInfo.calloc(vk.stack())
                     .sType$Default()
@@ -1176,5 +1204,82 @@ public class VulkanRenderer implements Disposable {
             vkCmdEndRenderPass(commandBuffer);
             throwIfFailed(vkEndCommandBuffer(commandBuffer));
         }
+    }
+
+    private int findMemoryTypeIndex(VkPhysicalDevice physicalDevice, int allowedTypes, VkMemoryPropertyFlags requiredFlags) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkPhysicalDeviceMemoryProperties memoryProperties = vk.getPhysicalDeviceMemoryProperties(physicalDevice);
+            for (int i = 0; i < memoryProperties.memoryTypeCount(); i++) {
+                if ((allowedTypes & (1 << i)) != 0 && (memoryProperties.memoryTypes(i).propertyFlags() & requiredFlags.value()) == requiredFlags.value()) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private Image createDepthBufferImage(VkDevice logicalDevice, int width, int height) {
+        Set<VkFormat> allowedFormats = Set.of(VkFormat.VK_FORMAT_D32_SFLOAT_S8_UINT, VkFormat.VK_FORMAT_D32_SFLOAT, VkFormat.VK_FORMAT_D24_UNORM_S8_UINT, VkFormat.VK_FORMAT_D16_UNORM_S8_UINT);
+        VkFormat format = findBestImageFormat(logicalDevice, allowedFormats, VkImageTiling.VK_IMAGE_TILING_OPTIMAL, new VkFormatFeatureFlags(VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT));
+        return createImage(logicalDevice, width, height, format,
+                VkImageTiling.VK_IMAGE_TILING_OPTIMAL,
+                new VkImageUsageFlags(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT),
+                new VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
+                new VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT));
+    }
+
+    private Image createImage(VkDevice logicalDevice, int width, int height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags, VkImageAspectFlags imageAspectFlags) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkImageCreateInfo imageCreateInfo = VkImageCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .imageType(VK_IMAGE_TYPE_2D)
+                    .format(format.getValue())
+                    .extent(VkExtent3D.calloc(vk.stack())
+                            .width(width)
+                            .height(height)
+                            .depth(1)
+                    )
+                    .mipLevels(1)
+                    .arrayLayers(1)
+                    .samples(VK_SAMPLE_COUNT_1_BIT)
+                    .tiling(tiling.getValue())
+                    .usage(usageFlags.value())
+                    .sharingMode(VK_SHARING_MODE_EXCLUSIVE) // Whether image can be shared between queues
+                    .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+            VkImage image = vk.createImage(logicalDevice, imageCreateInfo, null);
+
+            VkMemoryRequirements memoryRequirements = vk.getImageMemoryRequirements(logicalDevice, image);
+            VkMemoryAllocateInfo memoryAllocateInfo = VkMemoryAllocateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .allocationSize(memoryRequirements.size())
+                    .memoryTypeIndex(findMemoryTypeIndex(logicalDevice.getPhysicalDevice(), memoryRequirements.memoryTypeBits(), memoryFlags));
+            VkDeviceMemory deviceMemory = vk.allocateMemory(logicalDevice, memoryAllocateInfo);
+            vk.bindImageMemory(logicalDevice, image, deviceMemory, 0);
+
+            VkImageView imageView = createImageView(logicalDevice, image, format, imageAspectFlags);
+
+            return new Image(
+                    format,
+                    image,
+                    deviceMemory,
+                    imageView
+            );
+        }
+    }
+
+    private VkFormat findBestImageFormat(VkDevice logicalDevice, Set<VkFormat> possibleFormats, VkImageTiling tiling, VkFormatFeatureFlags featureFlags) {
+        try (VulkanSession vk = new VulkanSession()) {
+            for (VkFormat format : possibleFormats) {
+                VkFormatProperties properties = vk.getPhysicalDeviceFormatProperties(logicalDevice.getPhysicalDevice(), format);
+
+                if (VkImageTiling.VK_IMAGE_TILING_LINEAR.equals(tiling) && (properties.linearTilingFeatures() & featureFlags.value()) == featureFlags.value()) {
+                    return format;
+                } else if (VkImageTiling.VK_IMAGE_TILING_OPTIMAL.equals(tiling) && (properties.optimalTilingFeatures() & featureFlags.value()) == featureFlags.value()) {
+                    return format;
+                }
+            }
+        }
+
+        throw new RuntimeException("Failed to find best image format");
     }
 }
