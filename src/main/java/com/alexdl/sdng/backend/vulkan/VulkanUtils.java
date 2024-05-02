@@ -1,11 +1,7 @@
 package com.alexdl.sdng.backend.vulkan;
 
 import org.lwjgl.system.MemoryStack;
-import org.lwjgl.vulkan.VkBuffer;
-import org.lwjgl.vulkan.VkBufferCreateInfo;
-import org.lwjgl.vulkan.VkDevice;
-import org.lwjgl.vulkan.VkDeviceMemory;
-import org.lwjgl.vulkan.VkMemoryAllocateInfo;
+import org.lwjgl.vulkan.*;
 
 import java.nio.LongBuffer;
 import java.util.List;
@@ -137,6 +133,38 @@ public class VulkanUtils {
             vk.bindBufferMemory(logicalDevice, buffer, bufferMemory, 0);
 
             return new VkBuffer(buffer.address(), bufferMemory);
+        }
+    }
+
+    public static VkCommandBuffer beginCommandBuffer(VkDevice logicalDevice, VkCommandPool commandPool) {
+        try(VulkanSession vk = new VulkanSession()) {
+            VkCommandBufferAllocateInfo commandBufferAllocateInfo = VkCommandBufferAllocateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .commandPool(commandPool.address())
+                    .level(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+                    .commandBufferCount(1);
+            VkCommandBuffer commandBuffer = vk.allocateCommandBuffers(logicalDevice, commandBufferAllocateInfo).getFirst();
+
+            VkCommandBufferBeginInfo commandBufferBeginInfo = VkCommandBufferBeginInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .flags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+            vk.beginCommandBuffer(commandBuffer, commandBufferBeginInfo);
+
+            return commandBuffer;
+        }
+    }
+
+    public static void endAndSubmitCommandBuffer(VkDevice logicalDevice, VkCommandPool commandPool, VkQueue queue, VkCommandBuffer commandBuffer) {
+        try(VulkanSession vk = new VulkanSession()) {
+            vk.endCommandBuffer(commandBuffer);
+
+            VkSubmitInfo submitInfo = VkSubmitInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .pCommandBuffers(vk.stack().pointers(commandBuffer));
+            vk.queueSubmit(queue, submitInfo, null);
+
+            vk.queueWaitIdle(queue);
+            vk.freeCommandBuffers(logicalDevice, commandPool, commandBuffer);
         }
     }
 }

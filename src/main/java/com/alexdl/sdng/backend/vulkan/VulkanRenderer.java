@@ -16,6 +16,7 @@ import org.lwjgl.PointerBuffer;
 import org.lwjgl.vulkan.*;
 import org.lwjgl.vulkan.enums.VkColorSpaceKHR;
 import org.lwjgl.vulkan.enums.VkFormat;
+import org.lwjgl.vulkan.enums.VkImageLayout;
 import org.lwjgl.vulkan.enums.VkImageTiling;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 import org.lwjgl.vulkan.enums.VkSharingMode;
@@ -37,6 +38,7 @@ import static com.alexdl.sdng.backend.vulkan.VulkanUtils.*;
 import static org.lwjgl.glfw.GLFW.glfwGetFramebufferSize;
 import static org.lwjgl.glfw.GLFWVulkan.glfwCreateWindowSurface;
 import static org.lwjgl.glfw.GLFWVulkan.glfwGetRequiredInstanceExtensions;
+import static org.lwjgl.stb.STBImage.*;
 import static org.lwjgl.system.MemoryUtil.*;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.KHRSurface.*;
@@ -55,6 +57,7 @@ public class VulkanRenderer implements Disposable {
     private final SceneDataStruct sceneData;
     private final List<VertexDataStruct.Buffer> meshData;
     private final List<Mesh> meshes;
+    private final List<Image> textures;
 
     private final PushConstantStruct pushConstant;
 
@@ -116,6 +119,9 @@ public class VulkanRenderer implements Disposable {
 
         swapchainFramebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages, depthBufferImage);
         swapchainCommandBuffers = createCommandBuffers(logicalDevice, graphicsCommandPool, swapchainFramebuffers);
+
+        textures = new ArrayList<>(1);
+        int firstTexture = createTexture("/Users/adlugosz/Development/shadow-engine/src/main/resources/smiley.png");
 
         Matrix4f projection = new Matrix4f()
                 .perspective(
@@ -221,6 +227,12 @@ public class VulkanRenderer implements Disposable {
     @Override
     public void dispose() {
         throwIfFailed(vkDeviceWaitIdle(logicalDevice));
+
+        for (Image texture : textures) {
+            vkDestroyImageView(logicalDevice, texture.view().address(), null);
+            vkDestroyImage(logicalDevice, texture.image().address(), null);
+            vkFreeMemory(logicalDevice, texture.memory().address(), null);
+        }
 
         vkDestroyImageView(logicalDevice, depthBufferImage.view().address(), null);
         vkDestroyImage(logicalDevice, depthBufferImage.image().address(), null);
@@ -810,7 +822,7 @@ public class VulkanRenderer implements Disposable {
                     .finalLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
             VkAttachmentReference.Buffer colorAttachmentRefs = VkAttachmentReference.calloc(1, vk.stack())
-            // Color Attachment Reference
+                    // Color Attachment Reference
                     .attachment(0) // The index in the list that we pass to VkRenderPassCreateInfo.pAttachments
                     .layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
             // Depth Attachment Reference
@@ -1206,7 +1218,7 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private int findMemoryTypeIndex(VkPhysicalDevice physicalDevice, int allowedTypes, VkMemoryPropertyFlags requiredFlags) {
+    private static int findMemoryTypeIndex(VkPhysicalDevice physicalDevice, int allowedTypes, VkMemoryPropertyFlags requiredFlags) {
         try (VulkanSession vk = new VulkanSession()) {
             VkPhysicalDeviceMemoryProperties memoryProperties = vk.getPhysicalDeviceMemoryProperties(physicalDevice);
             for (int i = 0; i < memoryProperties.memoryTypeCount(); i++) {
@@ -1228,7 +1240,7 @@ public class VulkanRenderer implements Disposable {
                 new VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT));
     }
 
-    private Image createImage(VkDevice logicalDevice, int width, int height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags, VkImageAspectFlags imageAspectFlags) {
+    private static @Nonnull Image createImage(@Nonnull VkDevice logicalDevice, int width, int height, @Nonnull VkFormat format, @Nonnull VkImageTiling tiling, @Nonnull VkImageUsageFlags usageFlags, @Nonnull VkMemoryPropertyFlags memoryFlags, VkImageAspectFlags imageAspectFlags) {
         try (VulkanSession vk = new VulkanSession()) {
             VkImageCreateInfo imageCreateInfo = VkImageCreateInfo.calloc(vk.stack())
                     .sType$Default()
@@ -1281,5 +1293,111 @@ public class VulkanRenderer implements Disposable {
         }
 
         throw new RuntimeException("Failed to find best image format");
+    }
+
+    private static void copyColorImageBuffer(VkDevice logicalDevice, VkQueue queue, VkCommandPool commandPool, VkBuffer srcBuffer, VkImage dstImage, int width, int height) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkCommandBuffer commandBuffer = beginCommandBuffer(logicalDevice, commandPool);
+
+            VkBufferImageCopy bufferImageCopy = VkBufferImageCopy.calloc(vk.stack())
+                    .bufferOffset(0)
+                    .bufferRowLength(0)
+                    .bufferImageHeight(0)
+                    .imageSubresource(VkImageSubresourceLayers.calloc(vk.stack())
+                            .aspectMask(VK_IMAGE_ASPECT_COLOR_BIT)
+                            .mipLevel(0)
+                            .baseArrayLayer(0)
+                            .layerCount(1))
+                    .imageOffset(VkOffset3D.calloc(vk.stack()).set(0, 0, 0))
+                    .imageExtent(VkExtent3D.calloc(vk.stack()).set(width, height, 1));
+            vk.cmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, VkImageLayout.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, bufferImageCopy);
+
+            endAndSubmitCommandBuffer(logicalDevice, commandPool, queue, commandBuffer);
+        }
+    }
+
+    private static void transitionImageLayout(VkDevice logicalDevice, VkQueue queue, VkCommandPool commandPool, VkImage image, VkImageLayout currentLayout, VkImageLayout targetLayout) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkCommandBuffer commandBuffer = beginCommandBuffer(logicalDevice, commandPool);
+
+            VkImageMemoryBarrier.Buffer imageMemoryBarrier = VkImageMemoryBarrier.calloc(1, vk.stack())
+                    .sType$Default()
+                    .oldLayout(currentLayout.getValue())
+                    .newLayout(targetLayout.getValue())
+                    .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                    .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                    .image(image.address())
+                    .subresourceRange(VkImageSubresourceRange.calloc(vk.stack())
+                            .aspectMask(VK_IMAGE_ASPECT_COLOR_BIT)
+                            .baseMipLevel(0)
+                            .levelCount(1)
+                            .baseArrayLayer(0)
+                            .layerCount(1));
+
+            VkPipelineStageFlags srcStage;
+            VkPipelineStageFlags dstStage;
+
+            if (currentLayout == VkImageLayout.VK_IMAGE_LAYOUT_UNDEFINED && targetLayout == VkImageLayout.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+                imageMemoryBarrier.srcAccessMask(0); // Transition must happen AFTER this memory access stage
+                imageMemoryBarrier.dstAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT); // Transition must happen BEFORE this memory access stage
+                srcStage = new VkPipelineStageFlags(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+                dstStage = new VkPipelineStageFlags(VK_PIPELINE_STAGE_TRANSFER_BIT);
+            } else if (currentLayout == VkImageLayout.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && targetLayout == VkImageLayout.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                imageMemoryBarrier.srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT); // Transition must happen AFTER this memory access stage
+                imageMemoryBarrier.dstAccessMask(VK_ACCESS_SHADER_READ_BIT); // Transition must happen BEFORE this memory access stage
+                srcStage = new VkPipelineStageFlags(VK_PIPELINE_STAGE_TRANSFER_BIT);
+                dstStage = new VkPipelineStageFlags(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            } else {
+                throw new RuntimeException(String.format("Unsupported image layout combination: %s / %s", currentLayout, targetLayout));
+            }
+
+            vk.cmdPipelineBarrier(commandBuffer, srcStage, dstStage, null, null, null, imageMemoryBarrier);
+
+            endAndSubmitCommandBuffer(logicalDevice, commandPool, queue, commandBuffer);
+        }
+    }
+
+    private int createTexture(String filename) {
+        try (VulkanSession vk = new VulkanSession()) {
+            IntBuffer widthBuffer = vk.stack().mallocInt(1);
+            IntBuffer heightBuffer = vk.stack().mallocInt(1);
+            IntBuffer channelsBuffer = vk.stack().mallocInt(1);
+            // TODO: Read the image from java resources using stbi_load_from_memory, instead of using an absolute path
+            ByteBuffer imageData = stbi_load(filename, widthBuffer, heightBuffer, channelsBuffer, STBI_rgb_alpha);
+            if (imageData == null) {
+                throw new RuntimeException("Failed to load image " + filename);
+            }
+            int width = widthBuffer.get(0);
+            int height = heightBuffer.get(0);
+            int imageDataSize = width * height * STBI_rgb_alpha;
+
+            VkBuffer imageStagingBuffer = createBuffer(logicalDevice, imageDataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            assert imageStagingBuffer.memory() != null;
+            long stagingBufferMappedMemoryAddress = vk.mapMemoryPointer(logicalDevice, imageStagingBuffer.memory(), 0, imageDataSize, 0);
+            memCopy(memAddress(imageData), stagingBufferMappedMemoryAddress, imageDataSize);
+            vk.unmapMemory(logicalDevice, imageStagingBuffer.memory());
+
+            stbi_image_free(imageData);
+
+            Image image = createImage(
+                    logicalDevice,
+                    width, height,
+                    VkFormat.VK_FORMAT_R8G8B8A8_UNORM,
+                    VkImageTiling.VK_IMAGE_TILING_OPTIMAL,
+                    new VkImageUsageFlags(VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT),
+                    new VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
+                    new VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT)
+            );
+
+            transitionImageLayout(logicalDevice, graphicsQueue, graphicsCommandPool, image.image(), VkImageLayout.VK_IMAGE_LAYOUT_UNDEFINED, VkImageLayout.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            copyColorImageBuffer(logicalDevice, graphicsQueue, graphicsCommandPool, imageStagingBuffer, image.image(), width, height);
+            transitionImageLayout(logicalDevice, graphicsQueue, graphicsCommandPool, image.image(), VkImageLayout.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VkImageLayout.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+            vk.destroyBuffer(logicalDevice, imageStagingBuffer, null);
+            vk.freeMemory(logicalDevice, imageStagingBuffer.memory(), null);
+
+            textures.addLast(image);
+            return textures.size() - 1;
+        }
     }
 }

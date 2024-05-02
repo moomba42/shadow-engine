@@ -4,6 +4,7 @@ import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 import org.lwjgl.vulkan.enums.VkFormat;
+import org.lwjgl.vulkan.enums.VkImageLayout;
 import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 
 import javax.annotation.Nonnull;
@@ -323,5 +324,31 @@ public class VulkanSession implements AutoCloseable {
 
     public void bindImageMemory(@Nonnull VkDevice logicalDevice, @Nonnull VkImage image, @Nonnull VkDeviceMemory deviceMemory, long memoryOffset) {
         throwIfFailed(vkBindImageMemory(logicalDevice, image.address(), deviceMemory.address(), memoryOffset));
+    }
+
+    public void cmdCopyBufferToImage(@Nonnull VkCommandBuffer commandBuffer, @Nonnull VkBuffer srcBuffer, @Nonnull VkImage dstImage, @Nonnull VkImageLayout dstImageLayout, @Nonnull VkBufferImageCopy.Buffer regions) {
+        vkCmdCopyBufferToImage(commandBuffer, srcBuffer.address(), dstImage.address(), dstImageLayout.getValue(), regions);
+    }
+
+    public void cmdCopyBufferToImage(@Nonnull VkCommandBuffer commandBuffer, @Nonnull VkBuffer srcBuffer, @Nonnull VkImage dstImage, @Nonnull VkImageLayout dstImageLayout, @Nonnull VkBufferImageCopy region) {
+        VkBufferImageCopy.Buffer buffer = new VkBufferImageCopy.Buffer(region.address(), 1);
+        cmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, buffer);
+    }
+
+    public void cmdPipelineBarrier(@Nonnull VkCommandBuffer commandBuffer,
+                                   @Nullable VkPipelineStageFlags srcStageMask,
+                                   @Nullable VkPipelineStageFlags dstStageMask,
+                                   @Nullable VkDependencyFlags dependencyFlags,
+                                   @Nullable VkMemoryBarrier.Buffer memoryBarriers,
+                                   @Nullable VkBufferMemoryBarrier.Buffer bufferMemoryBarrier,
+                                   @Nullable VkImageMemoryBarrier.Buffer imageMemoryBarrier) {
+        vkCmdPipelineBarrier(commandBuffer,
+                srcStageMask == null ? 0 : srcStageMask.value(),
+                dstStageMask == null ? 0 : dstStageMask.value(),
+                dependencyFlags == null ? 0 : dependencyFlags.value(),
+                memoryBarriers,
+                bufferMemoryBarrier,
+                imageMemoryBarrier
+        );
     }
 }

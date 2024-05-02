@@ -6,17 +6,14 @@ import org.joml.Matrix4f;
 import org.lwjgl.vulkan.VkBuffer;
 import org.lwjgl.vulkan.VkBufferCopy;
 import org.lwjgl.vulkan.VkCommandBuffer;
-import org.lwjgl.vulkan.VkCommandBufferAllocateInfo;
-import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
 import org.lwjgl.vulkan.VkCommandPool;
 import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkQueue;
-import org.lwjgl.vulkan.VkSubmitInfo;
 
 import javax.annotation.Nonnull;
 import java.nio.IntBuffer;
 
-import static com.alexdl.sdng.backend.vulkan.VulkanUtils.createBuffer;
+import static com.alexdl.sdng.backend.vulkan.VulkanUtils.*;
 import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.system.MemoryUtil.memCopy;
 import static org.lwjgl.vulkan.VK10.*;
@@ -100,32 +97,15 @@ public class Mesh implements Disposable {
     private static void copyBuffer(VkQueue transferQueue, VkCommandPool transferCommandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, long bufferSize) {
         try (VulkanSession vk = new VulkanSession()) {
             VkDevice logicalDevice = transferQueue.getDevice();
-            VkCommandBufferAllocateInfo commandBufferAllocateInfo = VkCommandBufferAllocateInfo.calloc(vk.stack())
-                    .sType$Default()
-                    .commandPool(transferCommandPool.address())
-                    .level(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
-                    .commandBufferCount(1);
-            VkCommandBuffer transferCommandBuffer = vk.allocateCommandBuffers(logicalDevice, commandBufferAllocateInfo).getFirst();
-
-            VkCommandBufferBeginInfo beginInfo = VkCommandBufferBeginInfo.calloc(vk.stack())
-                    .sType$Default()
-                    .flags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-            vk.beginCommandBuffer(transferCommandBuffer, beginInfo);
+            VkCommandBuffer transferCommandBuffer = beginCommandBuffer(logicalDevice, transferCommandPool);
 
             VkBufferCopy.Buffer bufferRegionCopy = VkBufferCopy.calloc(1, vk.stack())
                     .srcOffset(0)
                     .dstOffset(0)
                     .size(bufferSize);
             vk.cmdCopyBuffer(transferCommandBuffer, srcBuffer, dstBuffer, bufferRegionCopy);
-            vk.endCommandBuffer(transferCommandBuffer);
 
-            VkSubmitInfo submitInfo = VkSubmitInfo.calloc(vk.stack())
-                    .sType$Default()
-                    .pCommandBuffers(vk.stack().pointers(transferCommandBuffer));
-            vk.queueSubmit(transferQueue, submitInfo, null);
-
-            vk.queueWaitIdle(transferQueue);
-            vk.freeCommandBuffers(logicalDevice, transferCommandPool, transferCommandBuffer);
+            endAndSubmitCommandBuffer(logicalDevice, transferCommandPool, transferQueue, transferCommandBuffer);
         }
     }
 
