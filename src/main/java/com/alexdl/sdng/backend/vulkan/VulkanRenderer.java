@@ -2,8 +2,6 @@ package com.alexdl.sdng.backend.vulkan;
 
 import com.alexdl.sdng.Configuration;
 import com.alexdl.sdng.backend.Disposable;
-import com.alexdl.sdng.backend.glfw.GLFWRuntimeException;
-import com.alexdl.sdng.backend.glfw.GlfwWindow;
 import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
 import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.PushConstantStruct;
@@ -98,7 +96,7 @@ public class VulkanRenderer implements Disposable {
 
     private int currentFrame = 0;
 
-    public VulkanRenderer(GlfwWindow window, Configuration configuration) {
+    public VulkanRenderer(long window, Configuration configuration) {
         instance = createInstance(configuration.debuggingEnabled());
         surface = createSurface(instance, window);
         debugMessengerPointer = configuration.debuggingEnabled() ? createDebugMessenger(instance) : null;
@@ -385,7 +383,7 @@ public class VulkanRenderer implements Disposable {
     private static List<String> getAllGlfwExtensions() {
         PointerBuffer glfwExtensionsBuffer = glfwGetRequiredInstanceExtensions();
         if (glfwExtensionsBuffer == null) {
-            throw new GLFWRuntimeException("No set of extensions allowing GLFW integration was found");
+            throw new RuntimeException("No set of extensions allowing GLFW integration was found");
         }
         List<String> glfwExtensions = new ArrayList<>(glfwExtensionsBuffer.limit());
         for (int i = 0; i < glfwExtensionsBuffer.capacity(); i++) {
@@ -536,10 +534,10 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private static VkSurfaceKHR createSurface(VkInstance instance, GlfwWindow window) {
+    private static VkSurfaceKHR createSurface(VkInstance instance, long window) {
         try (VulkanSession vk = new VulkanSession()) {
             LongBuffer surfacePointer = vk.stack().mallocLong(1);
-            throwIfFailed(glfwCreateWindowSurface(instance, window.address(), null, surfacePointer));
+            throwIfFailed(glfwCreateWindowSurface(instance, window, null, surfacePointer));
             return new VkSurfaceKHR(surfacePointer.get(0));
         }
     }
@@ -691,7 +689,7 @@ public class VulkanRenderer implements Disposable {
         return VkPresentModeKHR.VK_PRESENT_MODE_FIFO_KHR;
     }
 
-    private static SwapchainImageConfig findBestSwapchainImageConfig(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, GlfwWindow window) {
+    private static SwapchainImageConfig findBestSwapchainImageConfig(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, long window) {
         try (VulkanSession vk = new VulkanSession()) {
             VkSurfaceCapabilitiesKHR surfaceCapabilities = vk.getPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface);
 
@@ -715,7 +713,7 @@ public class VulkanRenderer implements Disposable {
             if (surfaceCapabilities.currentExtent().width() == Integer.MAX_VALUE) {
                 IntBuffer widthPointer = vk.stack().mallocInt(1);
                 IntBuffer heightPointer = vk.stack().mallocInt(1);
-                glfwGetFramebufferSize(window.address(), widthPointer, heightPointer);
+                glfwGetFramebufferSize(window, widthPointer, heightPointer);
                 VkExtent2D min = surfaceCapabilities.minImageExtent();
                 VkExtent2D max = surfaceCapabilities.maxImageExtent();
                 bestResolution = VkExtent2D.malloc(vk.stack())
