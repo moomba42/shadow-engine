@@ -24,16 +24,19 @@ public class Mesh implements Disposable {
     private final VkBuffer indexBuffer;
     private final VkDevice logicalDevice;
     private final Matrix4f transform;
+    private final int textureId;
 
     public Mesh(@Nonnull VkQueue transferQueue,
                 @Nonnull VkCommandPool transferCommandPool,
                 @Nonnull VertexDataStruct.Buffer vertexData,
-                @Nonnull IntBuffer indexData) {
+                @Nonnull IntBuffer indexData,
+                int textureId) {
         this.indexCount = indexData.limit();
         this.logicalDevice = transferQueue.getDevice();
         this.vertexBuffer = createVertexBuffer(vertexData, transferQueue, transferCommandPool);
         this.indexBuffer = createIndexBuffer(indexData, transferQueue, transferCommandPool);
         this.transform = new Matrix4f().identity();
+        this.textureId = textureId;
     }
 
     public VkBuffer getVertexBuffer() {
@@ -50,6 +53,10 @@ public class Mesh implements Disposable {
 
     public Matrix4f getTransform() {
         return transform;
+    }
+
+    public int getTextureId() {
+        return textureId;
     }
 
     private static VkBuffer createVertexBuffer(VertexDataStruct.Buffer vertexData, VkQueue transferQueue, VkCommandPool transferCommandPool) {

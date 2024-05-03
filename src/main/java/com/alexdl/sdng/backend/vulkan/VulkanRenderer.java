@@ -54,11 +54,6 @@ public class VulkanRenderer implements Disposable {
 
     private final VkDevice logicalDevice;
 
-    private final SceneDataStruct sceneData;
-    private final List<VertexDataStruct.Buffer> meshData;
-    private final List<Mesh> meshes;
-    private final List<Image> textures;
-
     private final PushConstantStruct pushConstant;
 
     private final VkQueue graphicsQueue;
@@ -83,6 +78,18 @@ public class VulkanRenderer implements Disposable {
     private final List<VkBuffer> modelUniformBuffers;
     private final MemoryBlockBuffer<ModelDataStruct> modelUniformTransferSpace;
     private final List<VkDescriptorSet> descriptorSets;
+
+    // Assets
+    private final SceneDataStruct sceneData;
+    private final List<VertexDataStruct.Buffer> meshData;
+    private final List<Mesh> meshes;
+    // Textures
+    private final List<Image> textures;
+    private final VkDescriptorSetLayout samplerSetLayout;
+    private final VkDescriptorPool samplerDescriptorPool;
+    private final List<VkDescriptorSet> samplerDescriptorSets;
+    private final VkSampler sampler;
+
 
     // For each frame
     private final List<VkFence> frameDrawFences;
@@ -112,16 +119,14 @@ public class VulkanRenderer implements Disposable {
         depthBufferImage = createDepthBufferImage(logicalDevice, swapchainImageConfig.extent().width(), swapchainImageConfig.extent().height());
 
         descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
-        pipelineLayout = createPipelineLayout(logicalDevice, List.of(descriptorSetLayout));
+        samplerSetLayout = createSamplerSetLayout(logicalDevice);
+        pipelineLayout = createPipelineLayout(logicalDevice, List.of(descriptorSetLayout, samplerSetLayout));
         renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format(), depthBufferImage.format());
         graphicsPipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
         graphicsCommandPool = createCommandPool(logicalDevice, queueIndices.graphical());
 
         swapchainFramebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages, depthBufferImage);
         swapchainCommandBuffers = createCommandBuffers(logicalDevice, graphicsCommandPool, swapchainFramebuffers);
-
-        textures = new ArrayList<>(1);
-        int firstTexture = createTexture("/Users/adlugosz/Development/shadow-engine/src/main/resources/smiley.png");
 
         Matrix4f projection = new Matrix4f()
                 .perspective(
@@ -147,28 +152,34 @@ public class VulkanRenderer implements Disposable {
         sceneUniformBuffers = createUniformBuffers(logicalDevice, swapchainImages.size(), sceneData.size());
         modelUniformBuffers = createUniformBuffers(logicalDevice, swapchainImages.size(), modelUniformTransferSpace.size());
         descriptorPool = createDescriptorPool(logicalDevice, sceneUniformBuffers.size(), modelUniformBuffers.size(), swapchainImages.size());
+        samplerDescriptorPool = createSamplerDescriptorPool(logicalDevice, MAX_OBJECTS, MAX_OBJECTS);
         descriptorSets = createDescriptorSets(logicalDevice, descriptorPool, descriptorSetLayout, swapchainImages.size());
         connectDescriptorSetsToUniformBuffers(logicalDevice, descriptorSets, sceneUniformBuffers, sceneData.size(), modelUniformBuffers, modelUniformTransferSpace.elementSize());
 
+        textures = new ArrayList<>(1);
+        samplerDescriptorSets = new ArrayList<>(1);
+        sampler = createTextureSampler(logicalDevice);
+
+
         VertexDataStruct.Buffer quad1 = new VertexDataStruct.Buffer(new float[]{
-                -0.4f, 0.4f, 0, 1, 0, 0,
-                -0.4f, -0.4f, 0, 0, 1, 0,
-                0.4f, -0.4f, 0, 0, 0, 1,
-                0.4f, 0.4f, 0, 1, 1, 0
+                -0.4f, 0.4f, 0, 1, 0, 0, 1, 1,
+                -0.4f, -0.4f, 0, 0, 1, 0, 1, 0,
+                0.4f, -0.4f, 0, 0, 0, 1, 0, 0,
+                0.4f, 0.4f, 0, 1, 1, 0, 0, 1,
         });
 
         VertexDataStruct.Buffer quad2 = new VertexDataStruct.Buffer(new float[]{
-                -0.25f, 0.6f, 0, 1, 0, 0,
-                -0.25f, -0.6f, 0, 0, 1, 0,
-                0.25f, -0.6f, 0, 0, 0, 1,
-                0.25f, 0.6f, 0, 1, 1, 0
+                -0.25f, 0.6f, 0, 1, 0, 0, 1, 1,
+                -0.25f, -0.6f, 0, 0, 1, 0, 1, 0,
+                0.25f, -0.6f, 0, 0, 0, 1, 0, 0,
+                0.25f, 0.6f, 0, 1, 1, 0, 0, 1,
         });
 
         IntBuffer quadIndices = BufferUtils.createIntBuffer(6).put(0, new int[]{0, 1, 2, 2, 3, 0});
         meshData = List.of(quad1, quad2);
         meshes = List.of(
-                new Mesh(graphicsQueue, graphicsCommandPool, quad1, quadIndices),
-                new Mesh(graphicsQueue, graphicsCommandPool, quad2, quadIndices)
+                new Mesh(graphicsQueue, graphicsCommandPool, quad1, quadIndices, createTexture("/Users/adlugosz/Development/shadow-engine/src/main/resources/smiley.png")),
+                new Mesh(graphicsQueue, graphicsCommandPool, quad2, quadIndices, createTexture("/Users/adlugosz/Development/shadow-engine/src/main/resources/art.png"))
         );
 
         frameDrawFences = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
@@ -183,7 +194,7 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private List<VkDescriptorSet> createDescriptorSets(VkDevice logicalDevice, VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout, int size) {
+    private static List<VkDescriptorSet> createDescriptorSets(VkDevice logicalDevice, VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout, int size) {
         try (VulkanSession vk = new VulkanSession()) {
             LongBuffer setLayouts = vk.stack().mallocLong(size);
             for (int i = 0; i < size; i++) {
@@ -198,7 +209,7 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private VkDescriptorPool createDescriptorPool(VkDevice logicalDevice, int sceneDescriptorCount, int modelDescriptorCount, int maxSets) {
+    private static VkDescriptorPool createDescriptorPool(VkDevice logicalDevice, int sceneDescriptorCount, int modelDescriptorCount, int maxSets) {
         try (VulkanSession vk = new VulkanSession()) {
             VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(2, vk.stack());
             poolSizes.get(0)
@@ -216,7 +227,22 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private List<VkBuffer> createUniformBuffers(VkDevice logicalDevice, int bufferCount, int bufferSize) {
+    private static VkDescriptorPool createSamplerDescriptorPool(VkDevice logicalDevice, int samplerDescriptorCount, int maxSets) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(1, vk.stack());
+            poolSizes.get(0)
+                    .type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .descriptorCount(samplerDescriptorCount);
+            VkDescriptorPoolCreateInfo poolCreateInfo = VkDescriptorPoolCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .maxSets(maxSets)
+                    .pPoolSizes(poolSizes);
+
+            return vk.createDescriptorPool(logicalDevice, poolCreateInfo, null);
+        }
+    }
+
+    private static List<VkBuffer> createUniformBuffers(VkDevice logicalDevice, int bufferCount, int bufferSize) {
         List<VkBuffer> buffers = new ArrayList<>(bufferCount);
         for (int i = 0; i < bufferCount; i++) {
             buffers.add(i, createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
@@ -227,6 +253,11 @@ public class VulkanRenderer implements Disposable {
     @Override
     public void dispose() {
         throwIfFailed(vkDeviceWaitIdle(logicalDevice));
+
+        vkDestroyDescriptorPool(logicalDevice, samplerDescriptorPool.address(), null);
+        vkDestroyDescriptorSetLayout(logicalDevice, samplerSetLayout.address(), null);
+
+        vkDestroySampler(logicalDevice, sampler.address(), null);
 
         for (Image texture : textures) {
             vkDestroyImageView(logicalDevice, texture.view().address(), null);
@@ -382,6 +413,8 @@ public class VulkanRenderer implements Disposable {
 
     private static boolean isSuitableDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
         try (VulkanSession vk = new VulkanSession()) {
+            VkPhysicalDeviceFeatures deviceFeatures = vk.getPhysicalDeviceFeatures(physicalDevice);
+
             IntBuffer surfaceFormatCountBuffer = vk.stack().mallocInt(1);
             vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface.address(), surfaceFormatCountBuffer, null);
             int surfaceFormatCount = surfaceFormatCountBuffer.get(0);
@@ -396,7 +429,8 @@ public class VulkanRenderer implements Disposable {
                    queueIndices.surfaceSupporting() >= 0 &&
                    deviceSupportsExtensions(physicalDevice, List.of(VK_KHR_SWAPCHAIN_EXTENSION_NAME)) &&
                    surfaceFormatCount > 0 &&
-                   presentationModeCount > 0;
+                   presentationModeCount > 0 &&
+                   deviceFeatures.samplerAnisotropy();
         }
     }
 
@@ -602,7 +636,8 @@ public class VulkanRenderer implements Disposable {
             }
 
             // Features
-            VkPhysicalDeviceFeatures deviceFeatures = VkPhysicalDeviceFeatures.calloc(vk.stack());
+            VkPhysicalDeviceFeatures deviceFeatures = VkPhysicalDeviceFeatures.calloc(vk.stack())
+                    .samplerAnisotropy(true);
 
             // Extensions
             VkExtensionProperties.Buffer availableExtensions = vk.enumerateDeviceExtensionProperties(physicalDevice);
@@ -885,7 +920,7 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
+    private static VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
         try (VulkanSession vk = new VulkanSession()) {
             VkDescriptorSetLayoutBinding.Buffer descriptorSetLayoutBindings = VkDescriptorSetLayoutBinding.calloc(2, vk.stack());
             descriptorSetLayoutBindings.get(0)
@@ -899,6 +934,24 @@ public class VulkanRenderer implements Disposable {
                     .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
                     .descriptorCount(1)
                     .stageFlags(VK_SHADER_STAGE_VERTEX_BIT)
+                    .pImmutableSamplers(null);
+
+            VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = VkDescriptorSetLayoutCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .pBindings(descriptorSetLayoutBindings);
+
+            return vk.createDescriptorSetLayout(logicalDevice, descriptorSetLayoutCreateInfo, null);
+        }
+    }
+
+    private static VkDescriptorSetLayout createSamplerSetLayout(VkDevice logicalDevice) {
+        try(VulkanSession vk = new VulkanSession()) {
+            VkDescriptorSetLayoutBinding.Buffer descriptorSetLayoutBindings = VkDescriptorSetLayoutBinding.calloc(1, vk.stack());
+            descriptorSetLayoutBindings.get(0)
+                    .binding(0)
+                    .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .descriptorCount(1)
+                    .stageFlags(VK_SHADER_STAGE_FRAGMENT_BIT)
                     .pImmutableSamplers(null);
 
             VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = VkDescriptorSetLayoutCreateInfo.calloc(vk.stack())
@@ -977,7 +1030,8 @@ public class VulkanRenderer implements Disposable {
                     .binding(0)
                     .stride(Vertex.BYTES)
                     .inputRate(VK_VERTEX_INPUT_RATE_VERTEX);
-            VkVertexInputAttributeDescription.Buffer vertexInputAttributeDescriptions = VkVertexInputAttributeDescription.calloc(2, vk.stack());
+
+            VkVertexInputAttributeDescription.Buffer vertexInputAttributeDescriptions = VkVertexInputAttributeDescription.calloc(3, vk.stack());
             vertexInputAttributeDescriptions.get(0)
                     .location(0)
                     .binding(0)
@@ -988,6 +1042,12 @@ public class VulkanRenderer implements Disposable {
                     .binding(0)
                     .format(VK_FORMAT_R32G32B32_SFLOAT)
                     .offset(Vertex.COLOR_OFFSET_BYTES);
+            vertexInputAttributeDescriptions.get(2)
+                    .location(2)
+                    .binding(0)
+                    .format(VK_FORMAT_R32G32_SFLOAT)
+                    .offset(Vertex.UV_OFFSET_BYTES);
+
             VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = VkPipelineVertexInputStateCreateInfo.calloc(vk.stack())
                     .sType$Default()
                     .pVertexBindingDescriptions(vertexInputBindingDescriptions)
@@ -1200,13 +1260,18 @@ public class VulkanRenderer implements Disposable {
                         VK_INDEX_TYPE_UINT32
                 );
 
+
+
                 int dynamicOffset = meshIndex * modelUniformTransferSpace.elementSize();
                 vkCmdBindDescriptorSets(
                         commandBuffer,
                         VK_PIPELINE_BIND_POINT_GRAPHICS,
                         pipelineLayout.address(),
                         0,
-                        vk.stack().longs(descriptorSets.get(imageIndex).address()),
+                        vk.stack().longs(
+                                descriptorSets.get(imageIndex).address(),
+                                samplerDescriptorSets.get(mesh.getTextureId()).address()
+                        ),
                         vk.stack().ints(dynamicOffset)
                 );
 
@@ -1357,7 +1422,7 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private int createTexture(String filename) {
+    private int createTextureImage(String filename) {
         try (VulkanSession vk = new VulkanSession()) {
             IntBuffer widthBuffer = vk.stack().mallocInt(1);
             IntBuffer heightBuffer = vk.stack().mallocInt(1);
@@ -1399,5 +1464,60 @@ public class VulkanRenderer implements Disposable {
             textures.addLast(image);
             return textures.size() - 1;
         }
+    }
+
+    private static VkSampler createTextureSampler(VkDevice logicalDevice) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkSamplerCreateInfo samplerCreateInfo = VkSamplerCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .magFilter(VK_FILTER_LINEAR)
+                    .minFilter(VK_FILTER_LINEAR)
+                    .mipmapMode(VK_SAMPLER_MIPMAP_MODE_LINEAR)
+                    .addressModeU(VK_SAMPLER_ADDRESS_MODE_REPEAT)
+                    .addressModeV(VK_SAMPLER_ADDRESS_MODE_REPEAT)
+                    .addressModeW(VK_SAMPLER_ADDRESS_MODE_REPEAT)
+                    .mipLodBias(0)
+                    .anisotropyEnable(true)
+                    .maxAnisotropy(16)
+                    .minLod(0)
+                    .maxLod(0)
+                    .borderColor(VK_BORDER_COLOR_INT_OPAQUE_BLACK)
+                    .unnormalizedCoordinates(false);
+            return vk.createSampler(logicalDevice, samplerCreateInfo, null);
+        }
+    }
+
+    private int createTextureDescriptor(VkImageView textureImageView) {
+        try(VulkanSession vk = new VulkanSession()) {
+            VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = VkDescriptorSetAllocateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .descriptorPool(samplerDescriptorPool.address())
+                    .pSetLayouts(vk.stack().longs(samplerSetLayout.address()));
+
+            VkDescriptorSet descriptorSet = vk.allocateDescriptorSets(logicalDevice, descriptorSetAllocateInfo).getFirst();
+
+            VkDescriptorImageInfo.Buffer descriptorImageInfo = VkDescriptorImageInfo.calloc(1, vk.stack())
+                    .sampler(sampler.address())
+                    .imageView(textureImageView.address())
+                    .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); // image layout when in use
+            VkWriteDescriptorSet.Buffer writeDescriptorSet = VkWriteDescriptorSet.calloc(1, vk.stack())
+                    .sType$Default()
+                    .dstSet(descriptorSet.address())
+                    .dstBinding(0)
+                    .dstArrayElement(0)
+                    .descriptorCount(1)
+                    .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .pImageInfo(descriptorImageInfo);
+
+            vk.updateDescriptorSets(logicalDevice, writeDescriptorSet, null);
+            samplerDescriptorSets.add(descriptorSet);
+
+            return samplerDescriptorSets.size() - 1;
+        }
+    }
+
+    private int createTexture(String path) {
+        int textureImageIndex = createTextureImage(path);
+        return createTextureDescriptor(textures.get(textureImageIndex).view());
     }
 }

@@ -351,4 +351,16 @@ public class VulkanSession implements AutoCloseable {
                 imageMemoryBarrier
         );
     }
+
+    public @Nonnull VkSampler createSampler(@Nonnull VkDevice logicalDevice, @Nonnull VkSamplerCreateInfo createInfo, @Nullable VkAllocationCallbacks allocator) {
+        LongBuffer pointer = stack.mallocLong(1);
+        throwIfFailed(vkCreateSampler(logicalDevice, createInfo, allocator, pointer));
+        return new VkSampler(pointer.get(0));
+    }
+
+    public @Nonnull VkPhysicalDeviceFeatures getPhysicalDeviceFeatures(@Nonnull VkPhysicalDevice physicalDevice) {
+        VkPhysicalDeviceFeatures deviceFeatures = VkPhysicalDeviceFeatures.malloc(stack);
+        vkGetPhysicalDeviceFeatures(physicalDevice, deviceFeatures);
+        return deviceFeatures;
+    }
 }
