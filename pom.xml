@@ -24,11 +24,13 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
         <flatlaf.version>3.4</flatlaf.version>
         <joml.version>1.10.5</joml.version>
         <lwjgl.version>3.3.3</lwjgl.version>
         <lwjgl-awt.version>0.2.0</lwjgl-awt.version>
         <jsr305.version>3.0.2</jsr305.version>
+        <jgltf-model.version>2.0.3</jgltf-model.version>
     </properties>
 
     <profiles>
@@ -83,7 +85,12 @@
             <artifactId>lwjgl3-awt</artifactId>
             <version>${lwjgl-awt.version}</version>
         </dependency>
-
+        <!-- Gltf Loading -->
+<!--        <dependency>-->
+<!--            <groupId>de.javagl</groupId>-->
+<!--            <artifactId>jgltf-model</artifactId>-->
+<!--            <version>${jgltf-model.version}</version>-->
+<!--        </dependency>-->
 
         <!--    LWJGL    -->
         <dependency>
