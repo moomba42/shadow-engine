@@ -176,8 +176,8 @@ public class VulkanRenderer implements Disposable {
         IntBuffer quadIndices = BufferUtils.createIntBuffer(6).put(0, new int[]{0, 1, 2, 2, 3, 0});
         meshData = List.of(quad1, quad2);
         meshes = List.of(
-                new Mesh(graphicsQueue, graphicsCommandPool, quad1, quadIndices, createTexture("/Users/adlugosz/Development/shadow-engine/src/main/resources/smiley.png")),
-                new Mesh(graphicsQueue, graphicsCommandPool, quad2, quadIndices, createTexture("/Users/adlugosz/Development/shadow-engine/src/main/resources/art.png"))
+                new Mesh(graphicsQueue, graphicsCommandPool, quad1, quadIndices, createTexture("smiley.png")),
+                new Mesh(graphicsQueue, graphicsCommandPool, quad2, quadIndices, createTexture("art.png"))
         );
 
         frameDrawFences = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
@@ -1425,10 +1425,17 @@ public class VulkanRenderer implements Disposable {
             IntBuffer widthBuffer = vk.stack().mallocInt(1);
             IntBuffer heightBuffer = vk.stack().mallocInt(1);
             IntBuffer channelsBuffer = vk.stack().mallocInt(1);
-            // TODO: Read the image from java resources using stbi_load_from_memory, instead of using an absolute path
-            ByteBuffer imageData = stbi_load(filename, widthBuffer, heightBuffer, channelsBuffer, STBI_rgb_alpha);
+
+            InputStream file = VulkanRenderer.class.getClassLoader().getResourceAsStream(filename);
+            if(file == null) {
+                throw new RuntimeException("Could not open file as resource: "+filename);
+            }
+            ByteBuffer rawDataBuffer = BufferUtils.createByteBuffer(file.available()).put(file.readAllBytes()).flip();
+            file.close();
+
+            ByteBuffer imageData = stbi_load_from_memory(rawDataBuffer, widthBuffer, heightBuffer, channelsBuffer, STBI_rgb_alpha);
             if (imageData == null) {
-                throw new RuntimeException("Failed to load image " + filename);
+                throw new RuntimeException("Failed to parse image as resource " + filename);
             }
             int width = widthBuffer.get(0);
             int height = heightBuffer.get(0);
@@ -1461,6 +1468,8 @@ public class VulkanRenderer implements Disposable {
 
             textures.addLast(image);
             return textures.size() - 1;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
