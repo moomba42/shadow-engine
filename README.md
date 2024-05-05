@@ -34,5 +34,9 @@ cd src/main/resources/shaders
 /Users/adlugosz/VulkanSDK/1.3.275.0/macOS/bin/glslangValidator -V shader.frag
 ```
 
+## Leading thoughts
+1. Separate data from logic
+2. Use interfaces and dependency injection to allow for easier engine modifications
+
 ## Required reads
 1. LWJGL3 memory management: https://blog.lwjgl.org/memory-management-in-lwjgl-3/

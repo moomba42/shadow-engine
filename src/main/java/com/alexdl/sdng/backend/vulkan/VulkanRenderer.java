@@ -1,6 +1,7 @@
 package com.alexdl.sdng.backend.vulkan;
 
 import com.alexdl.sdng.Configuration;
+import com.alexdl.sdng.Renderer;
 import com.alexdl.sdng.backend.Disposable;
 import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
 import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
@@ -43,7 +44,7 @@ import static org.lwjgl.vulkan.KHRSurface.*;
 import static org.lwjgl.vulkan.KHRSwapchain.*;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VulkanRenderer implements Disposable {
+public class VulkanRenderer implements Renderer, Disposable {
     private static final int MAX_CONCURRENT_FRAME_DRAWS = 2;
     private static final int MAX_OBJECTS = 10;
     private final VkInstance instance;
@@ -192,60 +193,53 @@ public class VulkanRenderer implements Disposable {
         }
     }
 
-    private static List<VkDescriptorSet> createDescriptorSets(VkDevice logicalDevice, VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout, int size) {
-        try (VulkanSession vk = new VulkanSession()) {
-            LongBuffer setLayouts = vk.stack().mallocLong(size);
-            for (int i = 0; i < size; i++) {
-                setLayouts.put(i, descriptorSetLayout.address());
-            }
-
-            VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = VkDescriptorSetAllocateInfo.calloc(vk.stack())
-                    .sType$Default()
-                    .descriptorPool(descriptorPool.address())
-                    .pSetLayouts(setLayouts);
-            return vk.allocateDescriptorSets(logicalDevice, descriptorSetAllocateInfo);
-        }
+    @Override
+    public void updateModel(int modelId, Matrix4f transform) {
+        meshes.get(modelId).getTransform().set(transform);
     }
 
-    private static VkDescriptorPool createDescriptorPool(VkDevice logicalDevice, int sceneDescriptorCount, int modelDescriptorCount, int maxSets) {
-        try (VulkanSession vk = new VulkanSession()) {
-            VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(2, vk.stack());
-            poolSizes.get(0)
-                    .type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-                    .descriptorCount(sceneDescriptorCount);
-            poolSizes.get(1)
-                    .type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
-                    .descriptorCount(modelDescriptorCount);
-            VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = VkDescriptorPoolCreateInfo.calloc(vk.stack())
-                    .sType$Default()
-                    .maxSets(maxSets)
-                    .pPoolSizes(poolSizes);
-
-            return vk.createDescriptorPool(logicalDevice, descriptorPoolCreateInfo, null);
-        }
+    @Override
+    public void updatePushConstant(Matrix4f transform) {
+        pushConstant.transform(transform);
     }
 
-    private static VkDescriptorPool createSamplerDescriptorPool(VkDevice logicalDevice, int samplerDescriptorCount, int maxSets) {
+    @Override
+    public void draw() {
         try (VulkanSession vk = new VulkanSession()) {
-            VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(1, vk.stack());
-            poolSizes.get(0)
-                    .type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-                    .descriptorCount(samplerDescriptorCount);
-            VkDescriptorPoolCreateInfo poolCreateInfo = VkDescriptorPoolCreateInfo.calloc(vk.stack())
+            // Wait for previous frame
+            vkWaitForFences(logicalDevice, frameDrawFences.get(currentFrame).address(), true, Integer.MAX_VALUE);
+            vkResetFences(logicalDevice, frameDrawFences.get(currentFrame).address());
+
+            // Get next image
+            IntBuffer imageIndexPointer = vk.stack().mallocInt(1);
+            vkAcquireNextImageKHR(logicalDevice, swapchain.address(), Long.MAX_VALUE, frameImageAvailableSemaphores.get(currentFrame).address(), VK_NULL_HANDLE, imageIndexPointer);
+            int imageIndex = imageIndexPointer.get(0);
+
+            recordCommands(imageIndex);
+            updateUniforms(imageIndex);
+
+            // Submit
+            VkSubmitInfo submitInfo = VkSubmitInfo.calloc(vk.stack())
                     .sType$Default()
-                    .maxSets(maxSets)
-                    .pPoolSizes(poolSizes);
+                    .waitSemaphoreCount(1)
+                    .pWaitSemaphores(vk.stack().longs(frameImageAvailableSemaphores.get(currentFrame).address()))
+                    .pWaitDstStageMask(vk.stack().ints(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT))
+                    .pCommandBuffers(vk.stack().pointers(swapchainCommandBuffers.get(imageIndex)))
+                    .pSignalSemaphores(vk.stack().longs(frameDrawSemaphores.get(currentFrame).address()));
+            throwIfFailed(vkQueueSubmit(graphicsQueue, submitInfo, frameDrawFences.get(currentFrame).address()));
 
-            return vk.createDescriptorPool(logicalDevice, poolCreateInfo, null);
-        }
-    }
+            // Present
+            VkPresentInfoKHR presentInfo = VkPresentInfoKHR.calloc(vk.stack())
+                    .sType$Default()
+                    .pWaitSemaphores(vk.stack().longs(frameDrawSemaphores.get(currentFrame).address()))
+                    .swapchainCount(1)
+                    .pSwapchains(vk.stack().longs(swapchain.address()))
+                    .pImageIndices(vk.stack().ints(imageIndex));
+            throwIfFailed(vkQueuePresentKHR(presentQueue, presentInfo));
 
-    private static List<VkBuffer> createUniformBuffers(VkDevice logicalDevice, int bufferCount, int bufferSize) {
-        List<VkBuffer> buffers = new ArrayList<>(bufferCount);
-        for (int i = 0; i < bufferCount; i++) {
-            buffers.add(i, createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+            // Increment current frame
+            currentFrame = (currentFrame + 1) % MAX_CONCURRENT_FRAME_DRAWS;
         }
-        return buffers;
     }
 
     @Override
@@ -313,50 +307,60 @@ public class VulkanRenderer implements Disposable {
         vkDestroyInstance(instance, null);
     }
 
-    public void draw() {
+    private static List<VkDescriptorSet> createDescriptorSets(VkDevice logicalDevice, VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout, int size) {
         try (VulkanSession vk = new VulkanSession()) {
-            // Wait for previous frame
-            vkWaitForFences(logicalDevice, frameDrawFences.get(currentFrame).address(), true, Integer.MAX_VALUE);
-            vkResetFences(logicalDevice, frameDrawFences.get(currentFrame).address());
+            LongBuffer setLayouts = vk.stack().mallocLong(size);
+            for (int i = 0; i < size; i++) {
+                setLayouts.put(i, descriptorSetLayout.address());
+            }
 
-            // Get next image
-            IntBuffer imageIndexPointer = vk.stack().mallocInt(1);
-            vkAcquireNextImageKHR(logicalDevice, swapchain.address(), Long.MAX_VALUE, frameImageAvailableSemaphores.get(currentFrame).address(), VK_NULL_HANDLE, imageIndexPointer);
-            int imageIndex = imageIndexPointer.get(0);
-
-            recordCommands(imageIndex);
-            updateUniforms(imageIndex);
-
-            // Submit
-            VkSubmitInfo submitInfo = VkSubmitInfo.calloc(vk.stack())
+            VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = VkDescriptorSetAllocateInfo.calloc(vk.stack())
                     .sType$Default()
-                    .waitSemaphoreCount(1)
-                    .pWaitSemaphores(vk.stack().longs(frameImageAvailableSemaphores.get(currentFrame).address()))
-                    .pWaitDstStageMask(vk.stack().ints(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT))
-                    .pCommandBuffers(vk.stack().pointers(swapchainCommandBuffers.get(imageIndex)))
-                    .pSignalSemaphores(vk.stack().longs(frameDrawSemaphores.get(currentFrame).address()));
-            throwIfFailed(vkQueueSubmit(graphicsQueue, submitInfo, frameDrawFences.get(currentFrame).address()));
-
-            // Present
-            VkPresentInfoKHR presentInfo = VkPresentInfoKHR.calloc(vk.stack())
-                    .sType$Default()
-                    .pWaitSemaphores(vk.stack().longs(frameDrawSemaphores.get(currentFrame).address()))
-                    .swapchainCount(1)
-                    .pSwapchains(vk.stack().longs(swapchain.address()))
-                    .pImageIndices(vk.stack().ints(imageIndex));
-            throwIfFailed(vkQueuePresentKHR(presentQueue, presentInfo));
-
-            // Increment current frame
-            currentFrame = (currentFrame + 1) % MAX_CONCURRENT_FRAME_DRAWS;
+                    .descriptorPool(descriptorPool.address())
+                    .pSetLayouts(setLayouts);
+            return vk.allocateDescriptorSets(logicalDevice, descriptorSetAllocateInfo);
         }
     }
 
-    public void updateModel(int modelId, Matrix4f transform) {
-        meshes.get(modelId).getTransform().set(transform);
+    private static VkDescriptorPool createDescriptorPool(VkDevice logicalDevice, int sceneDescriptorCount, int modelDescriptorCount, int maxSets) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(2, vk.stack());
+            poolSizes.get(0)
+                    .type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+                    .descriptorCount(sceneDescriptorCount);
+            poolSizes.get(1)
+                    .type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+                    .descriptorCount(modelDescriptorCount);
+            VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = VkDescriptorPoolCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .maxSets(maxSets)
+                    .pPoolSizes(poolSizes);
+
+            return vk.createDescriptorPool(logicalDevice, descriptorPoolCreateInfo, null);
+        }
     }
 
-    public void updatePushConstant(Matrix4f transform) {
-        pushConstant.transform(transform);
+    private static VkDescriptorPool createSamplerDescriptorPool(VkDevice logicalDevice, int samplerDescriptorCount, int maxSets) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(1, vk.stack());
+            poolSizes.get(0)
+                    .type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .descriptorCount(samplerDescriptorCount);
+            VkDescriptorPoolCreateInfo poolCreateInfo = VkDescriptorPoolCreateInfo.calloc(vk.stack())
+                    .sType$Default()
+                    .maxSets(maxSets)
+                    .pPoolSizes(poolSizes);
+
+            return vk.createDescriptorPool(logicalDevice, poolCreateInfo, null);
+        }
+    }
+
+    private static List<VkBuffer> createUniformBuffers(VkDevice logicalDevice, int bufferCount, int bufferSize) {
+        List<VkBuffer> buffers = new ArrayList<>(bufferCount);
+        for (int i = 0; i < bufferCount; i++) {
+            buffers.add(i, createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+        }
+        return buffers;
     }
 
     private void updateUniforms(int imageIndex) {

@@ -1,4 +1,4 @@
-package com.alexdl.sdng;
+package com.alexdl.sdng.backend;
 
 
 import com.formdev.flatlaf.FlatDarkLaf;
