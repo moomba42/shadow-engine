@@ -12,6 +12,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
+import org.lwjgl.glfw.GlfwWindow;
 import org.lwjgl.vulkan.*;
 import org.lwjgl.vulkan.enums.VkColorSpaceKHR;
 import org.lwjgl.vulkan.enums.VkFormat;
@@ -21,6 +22,7 @@ import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 import org.lwjgl.vulkan.enums.VkSharingMode;
 
 import javax.annotation.Nonnull;
+import javax.inject.Inject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -97,16 +99,17 @@ public class VulkanRenderer implements Renderer, Disposable {
 
     private int currentFrame = 0;
 
-    public VulkanRenderer(long window, Configuration configuration) {
+    @Inject
+    public VulkanRenderer(GlfwWindow window, Configuration configuration) {
         instance = createInstance(configuration.debuggingEnabled());
-        surface = createSurface(instance, window);
+        surface = createSurface(instance, window.address());
         debugMessengerPointer = configuration.debuggingEnabled() ? createDebugMessenger(instance) : null;
 
         VkPhysicalDevice physicalDevice = findFirstSuitablePhysicalDevice(instance, surface);
         logicalDevice = createLogicalDevice(physicalDevice, surface);
 
         VkPresentModeKHR presentationMode = findBestPresentationMode(physicalDevice, surface);
-        swapchainImageConfig = findBestSwapchainImageConfig(physicalDevice, surface, window);
+        swapchainImageConfig = findBestSwapchainImageConfig(physicalDevice, surface, window.address());
         swapchain = createSwapchain(physicalDevice, logicalDevice, surface, swapchainImageConfig, presentationMode);
         swapchainImages = createSwapchainImageViews(logicalDevice, swapchain, swapchainImageConfig.format());
 

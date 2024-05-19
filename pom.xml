@@ -31,6 +31,8 @@
         <lwjgl-awt.version>0.2.0</lwjgl-awt.version>
         <jsr305.version>3.0.2</jsr305.version>
         <jgltf-model.version>2.0.3</jgltf-model.version>
+        <dagger.version>2.51.1</dagger.version>
+        <maven-compiler.version>3.8.1</maven-compiler.version>
     </properties>
 
     <profiles>
@@ -67,6 +69,18 @@
             <artifactId>jsr305</artifactId>
             <version>${jsr305.version}</version>
         </dependency>
+        <!-- Dependency Injection -->
+        <dependency>
+            <groupId>com.google.dagger</groupId>
+            <artifactId>dagger</artifactId>
+            <version>${dagger.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.dagger</groupId>
+            <artifactId>dagger-compiler</artifactId>
+            <version>${dagger.version}</version>
+            <scope>provided</scope>
+        </dependency>
         <!-- UI look & feel -->
         <dependency>
             <groupId>com.formdev</groupId>
@@ -86,11 +100,11 @@
             <version>${lwjgl-awt.version}</version>
         </dependency>
         <!-- Gltf Loading -->
-<!--        <dependency>-->
-<!--            <groupId>de.javagl</groupId>-->
-<!--            <artifactId>jgltf-model</artifactId>-->
-<!--            <version>${jgltf-model.version}</version>-->
-<!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>de.javagl</groupId>-->
+        <!--            <artifactId>jgltf-model</artifactId>-->
+        <!--            <version>${jgltf-model.version}</version>-->
+        <!--        </dependency>-->
 
         <!--    LWJGL    -->
         <dependency>
@@ -135,4 +149,23 @@
             <optional>true</optional>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler.version}</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>com.google.dagger</groupId>
+                            <artifactId>dagger-compiler</artifactId>
+                            <version>${dagger.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

@@ -1,48 +1,41 @@
 package com.alexdl.sdng;
 
-import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
+import dagger.Binds;
+import dagger.Component;
+import dagger.Module;
 import org.joml.Matrix4f;
 
-import java.util.Objects;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 
 import static java.lang.Math.sin;
 import static java.lang.Math.tan;
-import static org.lwjgl.glfw.GLFW.*;
 
-public class GameTest implements Game{
+public class GameTest implements Game {
 
     private final Renderer renderer;
 
     private double timer = 0;
 
+    @Inject
     public GameTest(Renderer renderer) {
         this.renderer = renderer;
     }
 
+    @Module
+    interface GameTestModule {
+        @Binds
+        Game bindsGameTest(GameTest gameTest);
+    }
+
+    @Singleton
+    @Component(modules = {ShadowEngineModule.class, GameTestModule.class})
+    interface GameComponent {
+        Runner runner();
+    }
+
     public static void main(String[] args) {
-        boolean enableDebugging = args != null && args.length >= 1 && Objects.equals(args[0], "debug");
-
-        glfwInit();
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        long window = glfwCreateWindow(800, 600, "Vulkan Test", 0, 0);
-        VulkanRenderer renderer = new VulkanRenderer(window, new Configuration(enableDebugging));
-        Game game = new GameTest(renderer);
-        game.init();
-
-        double lastTime = 0.0;
-        while(!glfwWindowShouldClose(window)) {
-            glfwPollEvents();
-            double now = glfwGetTime();
-            double deltaTime = now - lastTime;
-            lastTime = now;
-            game.update(deltaTime);
-            game.render();
-        }
-
-        game.dispose();
-        renderer.dispose();
-        glfwDestroyWindow(window);
-        glfwTerminate();
+        DaggerGameTest_GameComponent.create().runner().run();
     }
 
     @Override
