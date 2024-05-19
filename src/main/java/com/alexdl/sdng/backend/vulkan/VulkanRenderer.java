@@ -2,7 +2,6 @@ package com.alexdl.sdng.backend.vulkan;
 
 import com.alexdl.sdng.Configuration;
 import com.alexdl.sdng.Renderer;
-import com.alexdl.sdng.backend.Disposable;
 import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
 import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.PushConstantStruct;
@@ -46,7 +45,7 @@ import static org.lwjgl.vulkan.KHRSurface.*;
 import static org.lwjgl.vulkan.KHRSwapchain.*;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VulkanRenderer implements Renderer, Disposable {
+public class VulkanRenderer implements Renderer {
     private static final int MAX_CONCURRENT_FRAME_DRAWS = 2;
     private static final int MAX_OBJECTS = 10;
     private final VkInstance instance;
@@ -950,7 +949,7 @@ public class VulkanRenderer implements Renderer, Disposable {
     }
 
     private static VkDescriptorSetLayout createSamplerSetLayout(VkDevice logicalDevice) {
-        try(VulkanSession vk = new VulkanSession()) {
+        try (VulkanSession vk = new VulkanSession()) {
             VkDescriptorSetLayoutBinding.Buffer descriptorSetLayoutBindings = VkDescriptorSetLayoutBinding.calloc(1, vk.stack());
             descriptorSetLayoutBindings.get(0)
                     .binding(0)
@@ -1266,7 +1265,6 @@ public class VulkanRenderer implements Renderer, Disposable {
                 );
 
 
-
                 int dynamicOffset = meshIndex * modelUniformTransferSpace.elementSize();
                 vkCmdBindDescriptorSets(
                         commandBuffer,
@@ -1434,8 +1432,8 @@ public class VulkanRenderer implements Renderer, Disposable {
             IntBuffer channelsBuffer = vk.stack().mallocInt(1);
 
             InputStream file = VulkanRenderer.class.getClassLoader().getResourceAsStream(filename);
-            if(file == null) {
-                throw new RuntimeException("Could not open file as resource: "+filename);
+            if (file == null) {
+                throw new RuntimeException("Could not open file as resource: " + filename);
             }
             ByteBuffer rawDataBuffer = BufferUtils.createByteBuffer(file.available()).put(file.readAllBytes()).flip();
             file.close();
@@ -1502,7 +1500,7 @@ public class VulkanRenderer implements Renderer, Disposable {
     }
 
     private int createTextureDescriptor(VkImageView textureImageView) {
-        try(VulkanSession vk = new VulkanSession()) {
+        try (VulkanSession vk = new VulkanSession()) {
             VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = VkDescriptorSetAllocateInfo.calloc(vk.stack())
                     .sType$Default()
                     .descriptorPool(samplerDescriptorPool.address())

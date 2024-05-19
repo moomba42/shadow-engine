@@ -65,6 +65,5 @@ public class GameTest implements Game {
 
     @Override
     public void dispose() {
-
     }
 }

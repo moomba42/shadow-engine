@@ -9,11 +9,13 @@ import static org.lwjgl.glfw.GLFW.*;
 public class Runner {
     private final Game game;
     private final GlfwWindow window;
+    private final Disposables disposables;
 
     @Inject
-    public Runner(Game game, GlfwWindow window) {
+    public Runner(Game game, GlfwWindow window, Disposables disposables) {
         this.game = game;
         this.window = window;
+        this.disposables = disposables;
     }
 
     public void run() {
@@ -27,7 +29,8 @@ public class Runner {
             game.update(deltaTime);
             game.render();
         }
-        glfwDestroyWindow(window.address());
-        glfwTerminate();
+        game.dispose();
+        disposables.dispose();
+        window.dispose();
     }
 }

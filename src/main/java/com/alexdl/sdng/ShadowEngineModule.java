@@ -13,12 +13,25 @@ import static org.lwjgl.glfw.GLFW.*;
 @Module
 public abstract class ShadowEngineModule {
     @Provides
-    static VulkanRenderer provideVulkanRenderer(GlfwWindow window, Configuration configuration) {
-        return new VulkanRenderer(window, configuration);
+    @Singleton
+    static GlfwWindow provideGlfwWindow() {
+        glfwInit();
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        long address = glfwCreateWindow(800, 600, "Vulkan Test", 0, 0);
+        return new GlfwWindow(address);
     }
 
-    @Binds
-    abstract Renderer bindRenderer(VulkanRenderer vulkanRenderer);
+    @Provides
+    static Disposables provideDisposables() {
+        return new Disposables();
+    }
+
+    @Provides
+    static VulkanRenderer provideVulkanRenderer(GlfwWindow window, Configuration configuration, Disposables disposables) {
+        var renderer = new VulkanRenderer(window, configuration);
+        disposables.add(renderer);
+        return renderer;
+    }
 
     @Provides
     static Configuration provideConfiguration() {
@@ -27,16 +40,10 @@ public abstract class ShadowEngineModule {
 
 
     @Provides
-    static Runner provideRunner(Game game, GlfwWindow window) {
-        return new Runner(game, window);
+    static Runner provideRunner(Game game, GlfwWindow window, Disposables disposables) {
+        return new Runner(game, window, disposables);
     }
 
-    @Provides
-    @Singleton
-    static GlfwWindow provideGlfwWindow() {
-        glfwInit();
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        long address = glfwCreateWindow(800, 600, "Vulkan Test", 0, 0);
-        return new GlfwWindow(address);
-    }
+    @Binds
+    abstract Renderer bindRenderer(VulkanRenderer vulkanRenderer);
 }
