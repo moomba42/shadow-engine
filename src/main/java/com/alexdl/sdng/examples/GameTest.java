@@ -1,5 +1,9 @@
-package com.alexdl.sdng;
+package com.alexdl.sdng.examples;
 
+import com.alexdl.sdng.Game;
+import com.alexdl.sdng.Renderer;
+import com.alexdl.sdng.Runner;
+import com.alexdl.sdng.ShadowEngineModule;
 import dagger.Binds;
 import dagger.Component;
 import dagger.Module;
@@ -12,16 +16,6 @@ import static java.lang.Math.sin;
 import static java.lang.Math.tan;
 
 public class GameTest implements Game {
-
-    private final Renderer renderer;
-
-    private double timer = 0;
-
-    @Inject
-    public GameTest(Renderer renderer) {
-        this.renderer = renderer;
-    }
-
     @Module
     interface GameTestModule {
         @Binds
@@ -36,6 +30,15 @@ public class GameTest implements Game {
 
     public static void main(String[] args) {
         DaggerGameTest_GameComponent.create().runner().run();
+    }
+
+    private final Renderer renderer;
+
+    private double timer = 0;
+
+    @Inject
+    public GameTest(Renderer renderer) {
+        this.renderer = renderer;
     }
 
     @Override
