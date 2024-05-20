@@ -1,4 +1,4 @@
 package com.alexdl.sdng.backend.vulkan;
 
-public record Mesh(int id) {
+public record Mesh(MeshData meshData) {
 }

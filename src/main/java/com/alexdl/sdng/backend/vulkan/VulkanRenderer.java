@@ -6,7 +6,6 @@ import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
 import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.PushConstantStruct;
 import com.alexdl.sdng.backend.vulkan.structs.SceneDataStruct;
-import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
@@ -81,8 +80,6 @@ public class VulkanRenderer implements Renderer {
 
     // Assets
     private final SceneDataStruct sceneData;
-    private final List<VertexDataStruct.Buffer> meshVertexBuffers;
-    private final List<MeshData> meshData;
     // Textures
     private final List<Image> textures;
     private final VkDescriptorSetLayout samplerSetLayout;
@@ -90,6 +87,7 @@ public class VulkanRenderer implements Renderer {
     private final List<VkDescriptorSet> samplerDescriptorSets;
     private final VkSampler sampler;
 
+    private final List<MeshData> meshesToDraw;
 
     // For each frame
     private final List<VkFence> frameDrawFences;
@@ -100,6 +98,7 @@ public class VulkanRenderer implements Renderer {
 
     @Inject
     public VulkanRenderer(GlfwWindow window, Configuration configuration) {
+        meshesToDraw = new ArrayList<>();
         instance = createInstance(configuration.debuggingEnabled());
         surface = createSurface(instance, window.address());
         debugMessengerPointer = configuration.debuggingEnabled() ? createDebugMessenger(instance) : null;
@@ -161,28 +160,6 @@ public class VulkanRenderer implements Renderer {
         samplerDescriptorSets = new ArrayList<>(1);
         sampler = createTextureSampler(logicalDevice);
 
-
-        VertexDataStruct.Buffer quad1 = new VertexDataStruct.Buffer(new float[]{
-                -0.4f, 0.4f, 0, 1, 0, 0, 1, 1,
-                -0.4f, -0.4f, 0, 0, 1, 0, 1, 0,
-                0.4f, -0.4f, 0, 0, 0, 1, 0, 0,
-                0.4f, 0.4f, 0, 1, 1, 0, 0, 1,
-        });
-
-        VertexDataStruct.Buffer quad2 = new VertexDataStruct.Buffer(new float[]{
-                -0.25f, 0.6f, 0, 1, 0, 0, 1, 1,
-                -0.25f, -0.6f, 0, 0, 1, 0, 1, 0,
-                0.25f, -0.6f, 0, 0, 0, 1, 0, 0,
-                0.25f, 0.6f, 0, 1, 1, 0, 0, 1,
-        });
-
-        IntBuffer quadIndices = BufferUtils.createIntBuffer(6).put(0, new int[]{0, 1, 2, 2, 3, 0});
-        meshVertexBuffers = List.of(quad1, quad2);
-        meshData = List.of(
-                new MeshData(graphicsQueue, graphicsCommandPool, quad1, quadIndices, createTexture("smiley.png")),
-                new MeshData(graphicsQueue, graphicsCommandPool, quad2, quadIndices, createTexture("art.png"))
-        );
-
         frameDrawFences = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
         frameImageAvailableSemaphores = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
         frameDrawSemaphores = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
@@ -195,14 +172,22 @@ public class VulkanRenderer implements Renderer {
         }
     }
 
-    @Override
-    public void updateModel(int modelId, Matrix4f transform) {
-        meshData.get(modelId).getTransform().set(transform);
+    public VkQueue getGraphicsQueue() {
+        return graphicsQueue;
+    }
+
+    public VkCommandPool getGraphicsCommandPool() {
+        return graphicsCommandPool;
     }
 
     @Override
     public void updatePushConstant(Matrix4f transform) {
         pushConstant.transform(transform);
+    }
+
+    @Override
+    public void queueMesh(@Nonnull Mesh mesh) {
+        meshesToDraw.add(mesh.meshData());
     }
 
     @Override
@@ -241,6 +226,8 @@ public class VulkanRenderer implements Renderer {
 
             // Increment current frame
             currentFrame = (currentFrame + 1) % MAX_CONCURRENT_FRAME_DRAWS;
+
+            meshesToDraw.clear();
         }
     }
 
@@ -279,12 +266,6 @@ public class VulkanRenderer implements Renderer {
             if (buffer.memory() != null) {
                 vkFreeMemory(logicalDevice, buffer.memory().address(), null);
             }
-        }
-        for (MeshData meshData : this.meshData) {
-            meshData.dispose();
-        }
-        for (VertexDataStruct.Buffer data : meshVertexBuffers) {
-            data.dispose();
         }
         frameDrawFences.forEach(fence -> vkDestroyFence(logicalDevice, fence.address(), null));
         frameImageAvailableSemaphores.forEach(semaphore -> vkDestroySemaphore(logicalDevice, semaphore.address(), null));
@@ -374,8 +355,8 @@ public class VulkanRenderer implements Renderer {
             vk.unmapMemory(logicalDevice, sceneMemory);
 
 
-            for (int i = 0; i < meshData.size(); i++) {
-                modelUniformTransferSpace.get(i).transform(meshData.get(i).getTransform());
+            for (int i = 0; i < meshesToDraw.size(); i++) {
+                modelUniformTransferSpace.get(i).transform(meshesToDraw.get(i).getTransform());
             }
             VkDeviceMemory modelMemory = modelUniformBuffers.get(imageIndex).memory();
             assert modelMemory != null;
@@ -1248,8 +1229,8 @@ public class VulkanRenderer implements Renderer {
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
             nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantStruct.SIZE, pushConstant.address());
 
-            for (int meshIndex = 0; meshIndex < meshData.size(); meshIndex++) {
-                MeshData meshData = this.meshData.get(meshIndex);
+            for (int meshIndex = 0; meshIndex < meshesToDraw.size(); meshIndex++) {
+                MeshData meshData = this.meshesToDraw.get(meshIndex);
 
                 vkCmdBindVertexBuffers(
                         commandBuffer,
@@ -1528,8 +1509,9 @@ public class VulkanRenderer implements Renderer {
         }
     }
 
-    private int createTexture(String path) {
+    public int createTexture(String path) {
         int textureImageIndex = createTextureImage(path);
         return createTextureDescriptor(textures.get(textureImageIndex).view());
     }
+
 }

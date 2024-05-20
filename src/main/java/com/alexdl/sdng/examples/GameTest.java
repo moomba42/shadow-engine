@@ -15,8 +15,7 @@ import org.joml.Matrix4f;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
-import static java.lang.Math.sin;
-import static java.lang.Math.tan;
+import static java.lang.Math.*;
 
 public class GameTest implements Game {
     @Module
@@ -40,6 +39,9 @@ public class GameTest implements Game {
 
     private double timer = 0;
     private Mesh cubeMesh;
+    private Mesh planeMesh;
+    private Mesh planeMesh2;
+    private Mesh planeMesh3;
 
     @Inject
     public GameTest(Renderer renderer, AssetLoader assetLoader) {
@@ -49,24 +51,31 @@ public class GameTest implements Game {
 
     @Override
     public void init() {
-
-        cubeMesh = loader.loadMesh(new ResourceHandle("cube.obj"));
+        planeMesh = loader.loadMesh(new ResourceHandle("plane1.obj"));
+        planeMesh2 = loader.loadMesh(new ResourceHandle("plane2.obj"));
+        planeMesh3 = loader.loadMesh(new ResourceHandle("plane3.obj"));
     }
 
     @Override
     public void update(double delta) {
         timer += delta;
-        renderer.updateModel(0, new Matrix4f().identity()
-                .translate(0.0f, 0.0f, -2.0f)
-                .rotate((float) tan(sin(sin(timer * 3))), 1, 0, 0));
-        renderer.updateModel(1, new Matrix4f().identity()
+        planeMesh.meshData().getTransform().set(new Matrix4f().identity()
                 .translate(0.0f, 0.0f, -2.0f)
                 .rotate((float) tan(sin(timer)) * 2, 0, 0, 1));
+        planeMesh2.meshData().getTransform().set(new Matrix4f().identity()
+                .translate(0.0f, 0.0f, -2.0f)
+                .rotate((float) tan(sin(sin(timer * 3))), 1, 0, 0));
+        planeMesh3.meshData().getTransform().set(new Matrix4f().identity()
+                .translate(-1.0f, 0.0f, -2.0f)
+                .rotate((float) tan(cos(timer * 3)), 1, 0, 0));
         renderer.updatePushConstant(new Matrix4f().identity().rotate((float) timer / 2, 0, 1, 0));
     }
 
     @Override
     public void render() {
+        renderer.queueMesh(planeMesh);
+        renderer.queueMesh(planeMesh2);
+        renderer.queueMesh(planeMesh3);
         renderer.draw();
     }
 

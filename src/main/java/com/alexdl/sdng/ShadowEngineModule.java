@@ -7,7 +7,6 @@ import dagger.Module;
 import dagger.Provides;
 import org.lwjgl.glfw.GlfwWindow;
 
-import javax.inject.Named;
 import javax.inject.Singleton;
 
 import static org.lwjgl.glfw.GLFW.*;
@@ -31,9 +30,13 @@ public abstract class ShadowEngineModule {
     @Provides
     static AssetLoader provideAssetLoader() {
         return new SampleDataAssetLoader();
+    static AssetLoader provideSampleDataAssetLoader(VulkanRenderer vulkanRenderer, Disposables disposables) {
+        return new SampleDataAssetLoader(vulkanRenderer, disposables);
     }
 
+
     @Provides
+    @Singleton
     static VulkanRenderer provideVulkanRenderer(GlfwWindow window, Configuration configuration, Disposables disposables) {
         var renderer = new VulkanRenderer(window, configuration);
         disposables.add(renderer);
