@@ -1,11 +1,13 @@
 package com.alexdl.sdng;
 
+import com.alexdl.sdng.backend.SampleDataAssetLoader;
 import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
 import dagger.Binds;
 import dagger.Module;
 import dagger.Provides;
 import org.lwjgl.glfw.GlfwWindow;
 
+import javax.inject.Named;
 import javax.inject.Singleton;
 
 import static org.lwjgl.glfw.GLFW.*;
@@ -24,6 +26,11 @@ public abstract class ShadowEngineModule {
     @Provides
     static Disposables provideDisposables() {
         return new Disposables();
+    }
+
+    @Provides
+    static AssetLoader provideAssetLoader() {
+        return new SampleDataAssetLoader();
     }
 
     @Provides

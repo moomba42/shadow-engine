@@ -1,9 +1,12 @@
 package com.alexdl.sdng.examples;
 
+import com.alexdl.sdng.AssetLoader;
 import com.alexdl.sdng.Game;
 import com.alexdl.sdng.Renderer;
 import com.alexdl.sdng.Runner;
 import com.alexdl.sdng.ShadowEngineModule;
+import com.alexdl.sdng.backend.vulkan.Mesh;
+import com.alexdl.sdng.backend.vulkan.ResourceHandle;
 import dagger.Binds;
 import dagger.Component;
 import dagger.Module;
@@ -33,17 +36,21 @@ public class GameTest implements Game {
     }
 
     private final Renderer renderer;
+    private final AssetLoader loader;
 
     private double timer = 0;
+    private Mesh cubeMesh;
 
     @Inject
-    public GameTest(Renderer renderer) {
+    public GameTest(Renderer renderer, AssetLoader assetLoader) {
         this.renderer = renderer;
+        this.loader = assetLoader;
     }
 
     @Override
     public void init() {
 
+        cubeMesh = loader.loadMesh(new ResourceHandle("cube.obj"));
     }
 
     @Override
