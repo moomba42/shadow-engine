@@ -1,12 +1,16 @@
 package com.alexdl.sdng.backend.vulkan;
 
+import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
 
+import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.List;
 import java.util.function.Function;
 
+import static org.lwjgl.system.MemoryUtil.memAddress;
+import static org.lwjgl.system.MemoryUtil.memCopy;
 import static org.lwjgl.vulkan.EXTDebugReport.VK_ERROR_VALIDATION_FAILED_EXT;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.KHRDisplaySwapchain.VK_ERROR_INCOMPATIBLE_DISPLAY_KHR;
@@ -165,6 +169,63 @@ public class VulkanUtils {
 
             vk.queueWaitIdle(queue);
             vk.freeCommandBuffers(logicalDevice, commandPool, commandBuffer);
+        }
+    }
+
+    public static VkBuffer createVertexBuffer(VertexDataStruct.Buffer vertexData, VkQueue transferQueue, VkCommandPool transferCommandPool) {
+        try (VulkanSession vk = new VulkanSession()) {
+            long bufferSize = vertexData.size();
+            VkDevice logicalDevice = transferQueue.getDevice();
+            VkBuffer stagingBuffer = createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            assert stagingBuffer.memory() != null;
+
+            long stagingBufferMappedMemoryAddress = vk.mapMemoryPointer(logicalDevice, stagingBuffer.memory(), 0, bufferSize, 0);
+            memCopy(vertexData.address(), stagingBufferMappedMemoryAddress, bufferSize);
+            vk.unmapMemory(logicalDevice, stagingBuffer.memory());
+
+            VkBuffer vertexBuffer = createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+            copyBuffer(transferQueue, transferCommandPool, stagingBuffer, vertexBuffer, bufferSize);
+            vk.destroyBuffer(logicalDevice, stagingBuffer, null);
+            vk.freeMemory(logicalDevice, stagingBuffer.memory(), null);
+
+            return vertexBuffer;
+        }
+    }
+
+    public static VkBuffer createIndexBuffer(IntBuffer indexData, VkQueue transferQueue, VkCommandPool transferCommandPool) {
+        try (VulkanSession vk = new VulkanSession()) {
+            long bufferSize = (long) Integer.BYTES * indexData.limit();
+            VkDevice logicalDevice = transferQueue.getDevice();
+            VkBuffer stagingBuffer = createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            assert stagingBuffer.memory() != null;
+
+            long stagingBufferMappedMemoryAddress = vk.mapMemoryPointer(logicalDevice, stagingBuffer.memory(), 0, bufferSize, 0);
+            memCopy(memAddress(indexData), stagingBufferMappedMemoryAddress, bufferSize);
+            vk.unmapMemory(logicalDevice, stagingBuffer.memory());
+
+            VkBuffer indexBuffer = createBuffer(logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+            copyBuffer(transferQueue, transferCommandPool, stagingBuffer, indexBuffer, bufferSize);
+            vk.destroyBuffer(logicalDevice, stagingBuffer, null);
+            vk.freeMemory(logicalDevice, stagingBuffer.memory(), null);
+
+            return indexBuffer;
+        }
+    }
+
+    public static void copyBuffer(VkQueue transferQueue, VkCommandPool transferCommandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, long bufferSize) {
+        try (VulkanSession vk = new VulkanSession()) {
+            VkDevice logicalDevice = transferQueue.getDevice();
+            VkCommandBuffer transferCommandBuffer = beginCommandBuffer(logicalDevice, transferCommandPool);
+
+            VkBufferCopy.Buffer bufferRegionCopy = VkBufferCopy.calloc(1, vk.stack())
+                    .srcOffset(0)
+                    .dstOffset(0)
+                    .size(bufferSize);
+            vk.cmdCopyBuffer(transferCommandBuffer, srcBuffer, dstBuffer, bufferRegionCopy);
+
+            endAndSubmitCommandBuffer(logicalDevice, transferCommandPool, transferQueue, transferCommandBuffer);
         }
     }
 }

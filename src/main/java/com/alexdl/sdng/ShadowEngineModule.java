@@ -28,8 +28,6 @@ public abstract class ShadowEngineModule {
     }
 
     @Provides
-    static AssetLoader provideAssetLoader() {
-        return new SampleDataAssetLoader();
     static AssetLoader provideSampleDataAssetLoader(VulkanRenderer vulkanRenderer, Disposables disposables) {
         return new SampleDataAssetLoader(vulkanRenderer, disposables);
     }

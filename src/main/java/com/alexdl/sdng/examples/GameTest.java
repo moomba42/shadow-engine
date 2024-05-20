@@ -38,7 +38,6 @@ public class GameTest implements Game {
     private final AssetLoader loader;
 
     private double timer = 0;
-    private Mesh cubeMesh;
     private Mesh planeMesh;
     private Mesh planeMesh2;
     private Mesh planeMesh3;
