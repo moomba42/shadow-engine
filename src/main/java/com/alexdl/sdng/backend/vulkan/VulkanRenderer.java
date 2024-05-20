@@ -81,8 +81,8 @@ public class VulkanRenderer implements Renderer {
 
     // Assets
     private final SceneDataStruct sceneData;
-    private final List<VertexDataStruct.Buffer> meshData;
-    private final List<Mesh> meshes;
+    private final List<VertexDataStruct.Buffer> meshVertexBuffers;
+    private final List<MeshData> meshData;
     // Textures
     private final List<Image> textures;
     private final VkDescriptorSetLayout samplerSetLayout;
@@ -177,10 +177,10 @@ public class VulkanRenderer implements Renderer {
         });
 
         IntBuffer quadIndices = BufferUtils.createIntBuffer(6).put(0, new int[]{0, 1, 2, 2, 3, 0});
-        meshData = List.of(quad1, quad2);
-        meshes = List.of(
-                new Mesh(graphicsQueue, graphicsCommandPool, quad1, quadIndices, createTexture("smiley.png")),
-                new Mesh(graphicsQueue, graphicsCommandPool, quad2, quadIndices, createTexture("art.png"))
+        meshVertexBuffers = List.of(quad1, quad2);
+        meshData = List.of(
+                new MeshData(graphicsQueue, graphicsCommandPool, quad1, quadIndices, createTexture("smiley.png")),
+                new MeshData(graphicsQueue, graphicsCommandPool, quad2, quadIndices, createTexture("art.png"))
         );
 
         frameDrawFences = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
@@ -197,7 +197,7 @@ public class VulkanRenderer implements Renderer {
 
     @Override
     public void updateModel(int modelId, Matrix4f transform) {
-        meshes.get(modelId).getTransform().set(transform);
+        meshData.get(modelId).getTransform().set(transform);
     }
 
     @Override
@@ -280,10 +280,10 @@ public class VulkanRenderer implements Renderer {
                 vkFreeMemory(logicalDevice, buffer.memory().address(), null);
             }
         }
-        for (Mesh mesh : meshes) {
-            mesh.dispose();
+        for (MeshData meshData : this.meshData) {
+            meshData.dispose();
         }
-        for (VertexDataStruct.Buffer data : meshData) {
+        for (VertexDataStruct.Buffer data : meshVertexBuffers) {
             data.dispose();
         }
         frameDrawFences.forEach(fence -> vkDestroyFence(logicalDevice, fence.address(), null));
@@ -374,8 +374,8 @@ public class VulkanRenderer implements Renderer {
             vk.unmapMemory(logicalDevice, sceneMemory);
 
 
-            for (int i = 0; i < meshes.size(); i++) {
-                modelUniformTransferSpace.get(i).transform(meshes.get(i).getTransform());
+            for (int i = 0; i < meshData.size(); i++) {
+                modelUniformTransferSpace.get(i).transform(meshData.get(i).getTransform());
             }
             VkDeviceMemory modelMemory = modelUniformBuffers.get(imageIndex).memory();
             assert modelMemory != null;
@@ -1248,18 +1248,18 @@ public class VulkanRenderer implements Renderer {
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
             nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantStruct.SIZE, pushConstant.address());
 
-            for (int meshIndex = 0; meshIndex < meshes.size(); meshIndex++) {
-                Mesh mesh = meshes.get(meshIndex);
+            for (int meshIndex = 0; meshIndex < meshData.size(); meshIndex++) {
+                MeshData meshData = this.meshData.get(meshIndex);
 
                 vkCmdBindVertexBuffers(
                         commandBuffer,
                         0,
-                        vk.stack().longs(mesh.getVertexBuffer().address()),
+                        vk.stack().longs(meshData.getVertexBuffer().address()),
                         vk.stack().longs(0)
                 );
                 vkCmdBindIndexBuffer(
                         commandBuffer,
-                        mesh.getIndexBuffer().address(),
+                        meshData.getIndexBuffer().address(),
                         0,
                         VK_INDEX_TYPE_UINT32
                 );
@@ -1273,12 +1273,12 @@ public class VulkanRenderer implements Renderer {
                         0,
                         vk.stack().longs(
                                 descriptorSets.get(imageIndex).address(),
-                                samplerDescriptorSets.get(mesh.getTextureId()).address()
+                                samplerDescriptorSets.get(meshData.getTextureId()).address()
                         ),
                         vk.stack().ints(dynamicOffset)
                 );
 
-                vkCmdDrawIndexed(commandBuffer, mesh.getIndexCount(), 1, 0, 0, 0);
+                vkCmdDrawIndexed(commandBuffer, meshData.getIndexCount(), 1, 0, 0, 0);
             }
 
             vkCmdEndRenderPass(commandBuffer);

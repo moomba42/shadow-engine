@@ -18,7 +18,7 @@ import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.system.MemoryUtil.memCopy;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class Mesh implements Disposable {
+public class MeshData implements Disposable {
     private final VkBuffer vertexBuffer;
     private final int indexCount;
     private final VkBuffer indexBuffer;
@@ -26,11 +26,11 @@ public class Mesh implements Disposable {
     private final Matrix4f transform;
     private final int textureId;
 
-    public Mesh(@Nonnull VkQueue transferQueue,
-                @Nonnull VkCommandPool transferCommandPool,
-                @Nonnull VertexDataStruct.Buffer vertexData,
-                @Nonnull IntBuffer indexData,
-                int textureId) {
+    public MeshData(@Nonnull VkQueue transferQueue,
+                    @Nonnull VkCommandPool transferCommandPool,
+                    @Nonnull VertexDataStruct.Buffer vertexData,
+                    @Nonnull IntBuffer indexData,
+                    int textureId) {
         this.indexCount = indexData.limit();
         this.logicalDevice = transferQueue.getDevice();
         this.vertexBuffer = createVertexBuffer(vertexData, transferQueue, transferCommandPool);
