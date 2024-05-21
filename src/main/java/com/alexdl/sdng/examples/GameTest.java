@@ -6,7 +6,9 @@ import com.alexdl.sdng.Renderer;
 import com.alexdl.sdng.Runner;
 import com.alexdl.sdng.ShadowEngineModule;
 import com.alexdl.sdng.backend.vulkan.Mesh;
+import com.alexdl.sdng.backend.vulkan.Model;
 import com.alexdl.sdng.backend.vulkan.ResourceHandle;
+import com.alexdl.sdng.backend.vulkan.Texture;
 import dagger.Binds;
 import dagger.Component;
 import dagger.Module;
@@ -39,8 +41,10 @@ public class GameTest implements Game {
 
     private double timer = 0;
     private Mesh planeMesh;
-    private Mesh planeMesh2;
-    private Mesh planeMesh3;
+    private Texture texture1;
+    private Texture texture2;
+    private Model model1;
+    private Model model2;
 
     @Inject
     public GameTest(Renderer renderer, AssetLoader assetLoader) {
@@ -51,34 +55,34 @@ public class GameTest implements Game {
     @Override
     public void init() {
         planeMesh = loader.loadMesh(new ResourceHandle("plane1.obj"));
-        planeMesh2 = loader.loadMesh(new ResourceHandle("plane2.obj"));
-        planeMesh3 = loader.loadMesh(new ResourceHandle("plane3.obj"));
+        texture1 = loader.loadTexture(new ResourceHandle("art.png"));
+        texture2 = loader.loadTexture(new ResourceHandle("smiley.png"));
+        model1 = new Model(planeMesh, texture1, new Matrix4f().identity());
+        model2 = new Model(planeMesh, texture2, new Matrix4f().identity());
     }
 
     @Override
     public void update(double delta) {
         timer += delta;
-        planeMesh.meshData().getTransform().set(new Matrix4f().identity()
+        model1.transform().set(new Matrix4f().identity()
                 .translate(0.0f, 0.0f, -2.0f)
                 .rotate((float) tan(sin(timer)) * 2, 0, 0, 1));
-        planeMesh2.meshData().getTransform().set(new Matrix4f().identity()
+        model2.transform().set(new Matrix4f().identity()
                 .translate(0.0f, 0.0f, -2.0f)
                 .rotate((float) tan(sin(sin(timer * 3))), 1, 0, 0));
-        planeMesh3.meshData().getTransform().set(new Matrix4f().identity()
-                .translate(-1.0f, 0.0f, -2.0f)
-                .rotate((float) tan(cos(timer * 3)), 1, 0, 0));
         renderer.updatePushConstant(new Matrix4f().identity().rotate((float) timer / 2, 0, 1, 0));
     }
 
     @Override
     public void render() {
-        renderer.queueMesh(planeMesh);
-        renderer.queueMesh(planeMesh2);
-        renderer.queueMesh(planeMesh3);
+        renderer.queueModel(model1);
+        renderer.queueModel(model1);
+        renderer.queueModel(model2);
         renderer.draw();
     }
 
     @Override
     public void dispose() {
+
     }
 }

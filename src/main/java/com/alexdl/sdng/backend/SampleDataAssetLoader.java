@@ -5,8 +5,10 @@ import com.alexdl.sdng.Disposables;
 import com.alexdl.sdng.backend.vulkan.Mesh;
 import com.alexdl.sdng.backend.vulkan.MeshData;
 import com.alexdl.sdng.backend.vulkan.ResourceHandle;
+import com.alexdl.sdng.backend.vulkan.Texture;
 import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
 import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
+import org.jetbrains.annotations.NotNull;
 import org.lwjgl.BufferUtils;
 
 import javax.annotation.Nonnull;
@@ -36,12 +38,17 @@ public class SampleDataAssetLoader implements AssetLoader {
         MeshData data = new MeshData(
                 renderer.getGraphicsQueue(),
                 renderer.getGraphicsCommandPool(),
-                quad, quadIndices,
-                renderer.createTexture("smiley.png")
+                quad, quadIndices
         );
 
         quad.dispose();
         disposables.add(data);
         return new Mesh(data);
+    }
+
+    @NotNull
+    @Override
+    public Texture loadTexture(@NotNull ResourceHandle resourceHandle) {
+        return renderer.createTexture(resourceHandle.uri());
     }
 }

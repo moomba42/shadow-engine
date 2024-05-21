@@ -23,7 +23,9 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.alexdl.sdng.backend.vulkan.VulkanUtils.*;
 import static org.lwjgl.stb.STBImage.*;
@@ -71,13 +73,12 @@ public class VulkanRenderer implements Renderer {
     // Assets
     private final SceneDataStruct sceneData;
     // Textures
-    private final List<Image> textures;
+    private final List<Image> images;
     private final VkDescriptorSetLayout samplerSetLayout;
     private final VkDescriptorPool samplerDescriptorPool;
-    private final List<VkDescriptorSet> samplerDescriptorSets;
     private final VkSampler sampler;
 
-    private final List<MeshData> meshesToDraw;
+    private final Set<Model> modelsToDraw;
 
     // For each frame
     private final List<VkFence> frameDrawFences;
@@ -88,7 +89,7 @@ public class VulkanRenderer implements Renderer {
 
     @Inject
     public VulkanRenderer(GlfwWindow window, Configuration configuration) {
-        meshesToDraw = new ArrayList<>();
+        modelsToDraw = new HashSet<>();
         instance = createInstance(configuration.debuggingEnabled());
         surface = createSurface(instance, window.address());
         debugMessengerPointer = configuration.debuggingEnabled() ? createDebugMessenger(instance) : null;
@@ -146,8 +147,7 @@ public class VulkanRenderer implements Renderer {
         descriptorSets = createDescriptorSets(logicalDevice, descriptorPool, descriptorSetLayout, swapchainImages.size());
         connectDescriptorSetsToUniformBuffers(logicalDevice, descriptorSets, sceneUniformBuffers, sceneData.size(), modelUniformBuffers, modelUniformTransferSpace.elementSize());
 
-        textures = new ArrayList<>(1);
-        samplerDescriptorSets = new ArrayList<>(1);
+        images = new ArrayList<>(10);
         sampler = createTextureSampler(logicalDevice);
 
         frameDrawFences = new ArrayList<>(MAX_CONCURRENT_FRAME_DRAWS);
@@ -171,13 +171,13 @@ public class VulkanRenderer implements Renderer {
     }
 
     @Override
-    public void updatePushConstant(Matrix4f transform) {
+    public void updatePushConstant(@Nonnull Matrix4f transform) {
         pushConstant.transform(transform);
     }
 
     @Override
-    public void queueMesh(@Nonnull Mesh mesh) {
-        meshesToDraw.add(mesh.meshData());
+    public void queueModel(@Nonnull Model model) {
+        modelsToDraw.add(model);
     }
 
     @Override
@@ -217,7 +217,7 @@ public class VulkanRenderer implements Renderer {
             // Increment current frame
             currentFrame = (currentFrame + 1) % MAX_CONCURRENT_FRAME_DRAWS;
 
-            meshesToDraw.clear();
+            modelsToDraw.clear();
         }
     }
 
@@ -230,10 +230,10 @@ public class VulkanRenderer implements Renderer {
 
         vkDestroySampler(logicalDevice, sampler.address(), null);
 
-        for (Image texture : textures) {
-            vkDestroyImageView(logicalDevice, texture.view().address(), null);
-            vkDestroyImage(logicalDevice, texture.image().address(), null);
-            vkFreeMemory(logicalDevice, texture.memory().address(), null);
+        for (Image image : images) {
+            vkDestroyImageView(logicalDevice, image.view().address(), null);
+            vkDestroyImage(logicalDevice, image.image().address(), null);
+            vkFreeMemory(logicalDevice, image.memory().address(), null);
         }
 
         vkDestroyImageView(logicalDevice, depthBufferImage.view().address(), null);
@@ -288,9 +288,10 @@ public class VulkanRenderer implements Renderer {
             memCopy(sceneData.address(), sceneTarget, sceneData.size());
             vk.unmapMemory(logicalDevice, sceneMemory);
 
-
-            for (int i = 0; i < meshesToDraw.size(); i++) {
-                modelUniformTransferSpace.get(i).transform(meshesToDraw.get(i).getTransform());
+            int modelCounter = 0;
+            for (Model model : modelsToDraw) {
+                modelUniformTransferSpace.get(modelCounter).transform(model.transform());
+                modelCounter = modelCounter + 1;
             }
             VkDeviceMemory modelMemory = modelUniformBuffers.get(imageIndex).memory();
             assert modelMemory != null;
@@ -328,18 +329,17 @@ public class VulkanRenderer implements Renderer {
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
             nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantStruct.SIZE, pushConstant.address());
 
-            for (int meshIndex = 0; meshIndex < meshesToDraw.size(); meshIndex++) {
-                MeshData meshData = this.meshesToDraw.get(meshIndex);
-
+            int meshIndex = 0;
+            for (Model model : modelsToDraw) {
                 vkCmdBindVertexBuffers(
                         commandBuffer,
                         0,
-                        vk.stack().longs(meshData.getVertexBuffer().address()),
+                        vk.stack().longs(model.mesh().meshData().getVertexBuffer().address()),
                         vk.stack().longs(0)
                 );
                 vkCmdBindIndexBuffer(
                         commandBuffer,
-                        meshData.getIndexBuffer().address(),
+                        model.mesh().meshData().getIndexBuffer().address(),
                         0,
                         VK_INDEX_TYPE_UINT32
                 );
@@ -353,12 +353,13 @@ public class VulkanRenderer implements Renderer {
                         0,
                         vk.stack().longs(
                                 descriptorSets.get(imageIndex).address(),
-                                samplerDescriptorSets.get(meshData.getTextureId()).address()
+                                model.texture().descriptorSet().address()
                         ),
                         vk.stack().ints(dynamicOffset)
                 );
 
-                vkCmdDrawIndexed(commandBuffer, meshData.getIndexCount(), 1, 0, 0, 0);
+                vkCmdDrawIndexed(commandBuffer, model.mesh().meshData().getIndexCount(), 1, 0, 0, 0);
+                meshIndex = meshIndex + 1;
             }
 
             vkCmdEndRenderPass(commandBuffer);
@@ -366,7 +367,7 @@ public class VulkanRenderer implements Renderer {
         }
     }
 
-    private int createTextureImage(String filename) {
+    private Image createTextureImage(String filename) {
         try (VulkanSession vk = new VulkanSession()) {
             IntBuffer widthBuffer = vk.stack().mallocInt(1);
             IntBuffer heightBuffer = vk.stack().mallocInt(1);
@@ -412,14 +413,13 @@ public class VulkanRenderer implements Renderer {
             vk.destroyBuffer(logicalDevice, imageStagingBuffer, null);
             vk.freeMemory(logicalDevice, imageStagingBuffer.memory(), null);
 
-            textures.addLast(image);
-            return textures.size() - 1;
+            return image;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private int createTextureDescriptor(VkImageView textureImageView) {
+    private VkDescriptorSet createTextureDescriptor(VkImageView textureImageView) {
         try (VulkanSession vk = new VulkanSession()) {
             VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = VkDescriptorSetAllocateInfo.calloc(vk.stack())
                     .sType$Default()
@@ -442,15 +442,18 @@ public class VulkanRenderer implements Renderer {
                     .pImageInfo(descriptorImageInfo);
 
             vk.updateDescriptorSets(logicalDevice, writeDescriptorSet, null);
-            samplerDescriptorSets.add(descriptorSet);
-
-            return samplerDescriptorSets.size() - 1;
+            return descriptorSet;
         }
     }
 
-    public int createTexture(String path) {
-        int textureImageIndex = createTextureImage(path);
-        return createTextureDescriptor(textures.get(textureImageIndex).view());
+    public @Nonnull Texture createTexture(@Nonnull String path) {
+        Image image = createTextureImage(path);
+        images.add(image);
+        VkDescriptorSet descriptorSet = createTextureDescriptor(image.view());
+        return new Texture(
+                descriptorSet,
+                image
+        );
     }
 
 }

@@ -2,7 +2,6 @@ package com.alexdl.sdng.backend.vulkan;
 
 import com.alexdl.sdng.backend.Disposable;
 import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
-import org.joml.Matrix4f;
 import org.lwjgl.vulkan.VkBuffer;
 import org.lwjgl.vulkan.VkCommandPool;
 import org.lwjgl.vulkan.VkDevice;
@@ -11,27 +10,23 @@ import org.lwjgl.vulkan.VkQueue;
 import javax.annotation.Nonnull;
 import java.nio.IntBuffer;
 
-import static com.alexdl.sdng.backend.vulkan.VulkanUtils.*;
+import static com.alexdl.sdng.backend.vulkan.VulkanUtils.createIndexBuffer;
+import static com.alexdl.sdng.backend.vulkan.VulkanUtils.createVertexBuffer;
 
 public class MeshData implements Disposable {
     private final VkBuffer vertexBuffer;
     private final int indexCount;
     private final VkBuffer indexBuffer;
     private final VkDevice logicalDevice;
-    private final Matrix4f transform;
-    private final int textureId;
 
     public MeshData(@Nonnull VkQueue transferQueue,
                     @Nonnull VkCommandPool transferCommandPool,
                     @Nonnull VertexDataStruct.Buffer vertexData,
-                    @Nonnull IntBuffer indexData,
-                    int textureId) {
+                    @Nonnull IntBuffer indexData) {
         this.indexCount = indexData.limit();
         this.logicalDevice = transferQueue.getDevice();
         this.vertexBuffer = createVertexBuffer(vertexData, transferQueue, transferCommandPool);
         this.indexBuffer = createIndexBuffer(indexData, transferQueue, transferCommandPool);
-        this.transform = new Matrix4f().identity();
-        this.textureId = textureId;
     }
 
     public VkBuffer getVertexBuffer() {
@@ -44,14 +39,6 @@ public class MeshData implements Disposable {
 
     public VkBuffer getIndexBuffer() {
         return indexBuffer;
-    }
-
-    public Matrix4f getTransform() {
-        return transform;
-    }
-
-    public int getTextureId() {
-        return textureId;
     }
 
     @Override
