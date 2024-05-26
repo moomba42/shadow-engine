@@ -1,6 +1,6 @@
 package com.alexdl.sdng;
 
-import com.alexdl.sdng.backend.SampleDataAssetLoader;
+import com.alexdl.sdng.backend.StandardAssetLoader;
 import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
 import dagger.Binds;
 import dagger.Module;
@@ -28,8 +28,8 @@ public abstract class ShadowEngineModule {
     }
 
     @Provides
-    static AssetLoader provideSampleDataAssetLoader(VulkanRenderer vulkanRenderer, Disposables disposables) {
-        return new SampleDataAssetLoader(vulkanRenderer, disposables);
+    static AssetLoader provideStandardAssetLoader(VulkanRenderer vulkanRenderer, Disposables disposables) {
+        return new StandardAssetLoader(vulkanRenderer, disposables);
     }
 
 

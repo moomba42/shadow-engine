@@ -334,12 +334,12 @@ public class VulkanRenderer implements Renderer {
                 vkCmdBindVertexBuffers(
                         commandBuffer,
                         0,
-                        vk.stack().longs(model.mesh().meshData().getVertexBuffer().address()),
+                        vk.stack().longs(model.mesh().data().getVertexBuffer().address()),
                         vk.stack().longs(0)
                 );
                 vkCmdBindIndexBuffer(
                         commandBuffer,
-                        model.mesh().meshData().getIndexBuffer().address(),
+                        model.mesh().data().getIndexBuffer().address(),
                         0,
                         VK_INDEX_TYPE_UINT32
                 );
@@ -353,12 +353,12 @@ public class VulkanRenderer implements Renderer {
                         0,
                         vk.stack().longs(
                                 descriptorSets.get(imageIndex).address(),
-                                model.texture().descriptorSet().address()
+                                model.mesh().material().diffuse().descriptorSet().address()
                         ),
                         vk.stack().ints(dynamicOffset)
                 );
 
-                vkCmdDrawIndexed(commandBuffer, model.mesh().meshData().getIndexCount(), 1, 0, 0, 0);
+                vkCmdDrawIndexed(commandBuffer, model.mesh().data().getIndexCount(), 1, 0, 0, 0);
                 meshIndex = meshIndex + 1;
             }
 

@@ -40,9 +40,6 @@ public class GameTest implements Game {
     private final AssetLoader loader;
 
     private double timer = 0;
-    private Mesh planeMesh;
-    private Texture texture1;
-    private Texture texture2;
     private Model model1;
     private Model model2;
 
@@ -54,11 +51,8 @@ public class GameTest implements Game {
 
     @Override
     public void init() {
-        planeMesh = loader.loadMesh(new ResourceHandle("plane1.obj"));
-        texture1 = loader.loadTexture(new ResourceHandle("art.png"));
-        texture2 = loader.loadTexture(new ResourceHandle("smiley.png"));
-        model1 = new Model(planeMesh, texture1, new Matrix4f().identity());
-        model2 = new Model(planeMesh, texture2, new Matrix4f().identity());
+        model1 = loader.loadModel(new ResourceHandle("test.fbx"));
+        model2 = loader.loadModel(new ResourceHandle("test.fbx"));
     }
 
     @Override
