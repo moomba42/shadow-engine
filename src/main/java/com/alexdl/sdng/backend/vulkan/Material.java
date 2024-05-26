@@ -1,4 +1,6 @@
 package com.alexdl.sdng.backend.vulkan;
 
-public record Material(Texture diffuse) {
+import org.joml.Vector4f;
+
+public record Material(Texture diffuse, Vector4f diffuseColor) {
 }

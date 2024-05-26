@@ -51,8 +51,8 @@ public class GameTest implements Game {
 
     @Override
     public void init() {
-        model1 = loader.loadModel(new ResourceHandle("test.fbx"));
-        model2 = loader.loadModel(new ResourceHandle("test.fbx"));
+        model1 = loader.loadModel(new ResourceHandle("teapot.obj"));
+        model2 = loader.loadModel(new ResourceHandle("teapot.obj"));
     }
 
     @Override
