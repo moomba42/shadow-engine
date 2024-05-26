@@ -5,10 +5,8 @@ import com.alexdl.sdng.Game;
 import com.alexdl.sdng.Renderer;
 import com.alexdl.sdng.Runner;
 import com.alexdl.sdng.ShadowEngineModule;
-import com.alexdl.sdng.backend.vulkan.Mesh;
 import com.alexdl.sdng.backend.vulkan.Model;
 import com.alexdl.sdng.backend.vulkan.ResourceHandle;
-import com.alexdl.sdng.backend.vulkan.Texture;
 import dagger.Binds;
 import dagger.Component;
 import dagger.Module;
@@ -17,7 +15,8 @@ import org.joml.Matrix4f;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
-import static java.lang.Math.*;
+import static java.lang.Math.sin;
+import static java.lang.Math.tan;
 
 public class GameTest implements Game {
     @Module
@@ -52,7 +51,7 @@ public class GameTest implements Game {
     @Override
     public void init() {
         model1 = loader.loadModel(new ResourceHandle("teapot.obj"));
-        model2 = loader.loadModel(new ResourceHandle("teapot.obj"));
+        model2 = loader.loadModel(new ResourceHandle("cube.obj"));
     }
 
     @Override
@@ -69,7 +68,6 @@ public class GameTest implements Game {
 
     @Override
     public void render() {
-        renderer.queueModel(model1);
         renderer.queueModel(model1);
         renderer.queueModel(model2);
         renderer.draw();
