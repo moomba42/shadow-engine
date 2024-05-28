@@ -39,8 +39,8 @@ public class GameTest implements Game {
     private final AssetLoader loader;
 
     private double timer = 0;
-    private Model model1;
-    private Model model2;
+    private Model teapot;
+    private Model cube;
 
     @Inject
     public GameTest(Renderer renderer, AssetLoader assetLoader) {
@@ -50,26 +50,27 @@ public class GameTest implements Game {
 
     @Override
     public void init() {
-        model1 = loader.loadModel(new ResourceHandle("teapot.obj"));
-        model2 = loader.loadModel(new ResourceHandle("cube.obj"));
+        teapot = loader.loadModel(new ResourceHandle("teapot.obj"));
+        cube = loader.loadModel(new ResourceHandle("cube.obj"));
     }
 
     @Override
     public void update(double delta) {
         timer += delta;
-        model1.transform().set(new Matrix4f().identity()
-                .translate(0.0f, 0.0f, -2.0f)
-                .rotate((float) tan(sin(timer)) * 2, 0, 0, 1));
-        model2.transform().set(new Matrix4f().identity()
-                .translate(0.0f, 0.0f, -2.0f)
+        teapot.transform().set(new Matrix4f().identity()
+                .translate(-3.0f, 0.0f, -2.0f)
+                .rotate((float) tan(sin(sin((timer+0.5) * 3))), 1, 0, 0))
+                .translate(0, -1.5f, 0);
+        cube.transform().set(new Matrix4f().identity()
+                .translate(3.0f, 0.0f, -2.0f)
                 .rotate((float) tan(sin(sin(timer * 3))), 1, 0, 0));
         renderer.updatePushConstant(new Matrix4f().identity().rotate((float) timer / 2, 0, 1, 0));
     }
 
     @Override
     public void render() {
-        renderer.queueModel(model1);
-        renderer.queueModel(model2);
+        renderer.queueModel(teapot);
+        renderer.queueModel(cube);
         renderer.draw();
     }
 

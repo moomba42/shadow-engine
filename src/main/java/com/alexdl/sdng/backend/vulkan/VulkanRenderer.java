@@ -85,6 +85,8 @@ public class VulkanRenderer implements Renderer {
     private final List<VkSemaphore> frameImageAvailableSemaphores;
     private final List<VkSemaphore> frameDrawSemaphores;
 
+    private final Texture defaultTexture;
+
     private int currentFrame = 0;
 
     @Inject
@@ -130,7 +132,7 @@ public class VulkanRenderer implements Renderer {
         sceneData = new SceneDataStruct()
                 .projection(projection)
                 .view(new Matrix4f().lookAt(
-                        new Vector3f(0.0f, 0.0f, 1.0f),
+                        new Vector3f(0.0f, 0.0f, 10.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
                         new Vector3f(0.0f, 1.0f, 0.0f)));
 
@@ -160,6 +162,8 @@ public class VulkanRenderer implements Renderer {
                 frameDrawSemaphores.add(i, vk.createSemaphore(logicalDevice));
             }
         }
+
+        defaultTexture = createTexture("white.png");
     }
 
     public VkQueue getGraphicsQueue() {
@@ -346,6 +350,10 @@ public class VulkanRenderer implements Renderer {
 
 
                 int dynamicOffset = meshIndex * modelUniformTransferSpace.elementSize();
+                Texture diffuseTexture = model.mesh().material().diffuse();
+                if(diffuseTexture == null) {
+                    diffuseTexture = defaultTexture;
+                }
                 vkCmdBindDescriptorSets(
                         commandBuffer,
                         VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -353,7 +361,7 @@ public class VulkanRenderer implements Renderer {
                         0,
                         vk.stack().longs(
                                 descriptorSets.get(imageIndex).address(),
-                                model.mesh().material().diffuse().descriptorSet().address()
+                                diffuseTexture.descriptorSet().address()
                         ),
                         vk.stack().ints(dynamicOffset)
                 );

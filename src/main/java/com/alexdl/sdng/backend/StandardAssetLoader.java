@@ -15,11 +15,14 @@ import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.assimp.AIColor4D;
+import org.lwjgl.assimp.AIFace;
 import org.lwjgl.assimp.AIFile;
 import org.lwjgl.assimp.AIFileIO;
 import org.lwjgl.assimp.AIMaterial;
+import org.lwjgl.assimp.AIMesh;
 import org.lwjgl.assimp.AIScene;
 import org.lwjgl.assimp.AIString;
+import org.lwjgl.assimp.AIVector3D;
 import org.lwjgl.system.MemoryStack;
 
 import javax.annotation.Nonnull;
@@ -57,15 +60,57 @@ public class StandardAssetLoader implements AssetLoader {
             materials.add(material);
         }
 
+        PointerBuffer aiMeshes = aiScene.mMeshes();
+        AIMesh aiMesh = AIMesh.create(aiMeshes.get(0));
+        AIVector3D.Buffer aiVertices = aiMesh.mVertices();
+        AIVector3D.Buffer aiTextureCoords = aiMesh.mTextureCoords(0);
+        AIColor4D.Buffer aiColors = aiMesh.mColors(0);
+        float[] vertices = new float[aiMesh.mNumVertices() * 8];
+        for (int i = 0; i < aiMesh.mNumVertices(); i++) {
+            AIVector3D aiVertex = aiVertices.get(i);
+            vertices[(i * 8) + 0] = aiVertex.x();
+            vertices[(i * 8) + 1] = aiVertex.y();
+            vertices[(i * 8) + 2] = aiVertex.z();
+
+            if (aiColors != null) {
+                AIColor4D aiColor = aiColors.get(i);
+                vertices[(i * 8) + 3] = aiColor.r();
+                vertices[(i * 8) + 4] = aiColor.g();
+                vertices[(i * 8) + 5] = aiColor.b();
+            } else {
+                vertices[(i * 8) + 3] = 1.0f;
+                vertices[(i * 8) + 4] = 1.0f;
+                vertices[(i * 8) + 5] = 1.0f;
+            }
+
+            if (aiTextureCoords != null) {
+                AIVector3D aiTextureCoord = aiTextureCoords.get(i);
+                vertices[(i * 8) + 6] = aiTextureCoord.x();
+                vertices[(i * 8) + 7] = aiTextureCoord.y();
+            } else {
+                vertices[(i * 8) + 6] = 0.0f;
+                vertices[(i * 8) + 7] = 0.0f;
+            }
+        }
+
+        AIFace.Buffer faces = aiMesh.mFaces();
+        int[] indices = new int[faces.limit() * 3];
+        for (int i = 0; i < faces.limit(); i++) {
+            AIFace aiFace = faces.get(i);
+            // Only process triangles
+            if (aiFace.mNumIndices() == 3) {
+                IntBuffer aiIndices = aiFace.mIndices();
+                indices[(i * 3) + 0] = aiIndices.get(0);
+                indices[(i * 3) + 1] = aiIndices.get(1);
+                indices[(i * 3) + 2] = aiIndices.get(2);
+            }
+        }
         aiReleaseImport(aiScene);
 
-        VertexDataStruct.Buffer quad = new VertexDataStruct.Buffer(new float[]{
-                -0.25f, 0.6f, 0, 1, 0, 0, 1, 1,
-                -0.25f, -0.6f, 0, 0, 1, 0, 1, 0,
-                0.25f, -0.6f, 0, 0, 0, 1, 0, 0,
-                0.25f, 0.6f, 0, 1, 1, 0, 0, 1,
-        });
-        IntBuffer quadIndices = BufferUtils.createIntBuffer(6).put(0, new int[]{0, 1, 2, 2, 3, 0});
+        ///////////////////////////////
+
+        VertexDataStruct.Buffer quad = new VertexDataStruct.Buffer(vertices);
+        IntBuffer quadIndices = BufferUtils.createIntBuffer(indices.length).put(0, indices);
 
         MeshData data = new MeshData(
                 renderer.getGraphicsQueue(),
@@ -76,8 +121,13 @@ public class StandardAssetLoader implements AssetLoader {
         quad.dispose();
         disposables.add(data);
 
-        Texture diffuse = loadTexture(new ResourceHandle("art.png"));
-        Material material = new Material(diffuse, new Vector4f(1, 1, 1, 1));
+        Material material;
+        int materialIndex = aiMesh.mMaterialIndex();
+        if (materialIndex >= 0 && materialIndex < materials.size()) {
+            material = materials.get(materialIndex);
+        } else {
+            material = new Material(null, new Vector4f(1, 1, 1, 1));
+        }
 
         return new Model(new Mesh(data, material), new Matrix4f().identity());
     }
