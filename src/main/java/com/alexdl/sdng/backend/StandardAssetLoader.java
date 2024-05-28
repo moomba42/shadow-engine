@@ -88,11 +88,13 @@ public class StandardAssetLoader implements AssetLoader {
             AIColor4D color = AIColor4D.calloc(stack);
             AIString path = AIString.calloc(stack);
 
-            aiGetMaterialTexture(aiMaterial, aiTextureType_DIFFUSE, 0, path, (IntBuffer) null, null, null, null, null, null);
+            aiGetMaterialTexture(aiMaterial, aiTextureType_DIFFUSE, 0, path, (IntBuffer) null,
+                    null, null, null, null, null);
             String diffuseTexturePath = path.dataString();
             Texture diffuseTexture = null;
             if (!diffuseTexturePath.isEmpty()) {
                 // Load diffuse texture here
+                diffuseTexture = loadTexture(new ResourceHandle(diffuseTexturePath));
             }
 
             Vector4f diffuseColor = new Vector4f();
@@ -158,7 +160,8 @@ public class StandardAssetLoader implements AssetLoader {
                     aiFile.SeekProc().free();
                     aiFile.FileSizeProc().free();
                 });
-        AIScene aiScene = aiImportFileEx(resourceHandle.uri(), aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices, fileIO);
+        AIScene aiScene = aiImportFileEx(resourceHandle.uri(),
+                aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices, fileIO);
         fileIO.OpenProc().free();
         fileIO.CloseProc().free();
 
