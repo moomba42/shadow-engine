@@ -3,7 +3,6 @@ package com.alexdl.sdng.backend;
 import com.alexdl.sdng.AssetLoader;
 import com.alexdl.sdng.Disposables;
 import com.alexdl.sdng.FileHandle;
-import com.alexdl.sdng.ResourceFileLoader;
 import com.alexdl.sdng.backend.vulkan.Material;
 import com.alexdl.sdng.backend.vulkan.Mesh;
 import com.alexdl.sdng.backend.vulkan.MeshData;

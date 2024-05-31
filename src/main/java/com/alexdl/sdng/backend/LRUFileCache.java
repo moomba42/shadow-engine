@@ -1,4 +1,8 @@
-package com.alexdl.sdng;
+package com.alexdl.sdng.backend;
+
+import com.alexdl.sdng.File;
+import com.alexdl.sdng.FileCache;
+import com.alexdl.sdng.FileHandle;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

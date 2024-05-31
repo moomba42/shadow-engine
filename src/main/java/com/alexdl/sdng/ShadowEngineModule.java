@@ -1,6 +1,8 @@
 package com.alexdl.sdng;
 
+import com.alexdl.sdng.backend.LRUFileCache;
 import com.alexdl.sdng.backend.ResourceAssetLoader;
+import com.alexdl.sdng.backend.ResourceFileLoader;
 import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
 import com.alexdl.sdng.logging.Logger;
 import dagger.Binds;
