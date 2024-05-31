@@ -1,8 +1,9 @@
 #version 450
 
 layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 color;
+layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
+layout(location = 3) in vec3 color;
 
 layout(set = 0, binding = 0) uniform ViewProjection {
     mat4 projection;
@@ -11,19 +12,24 @@ layout(set = 0, binding = 0) uniform ViewProjection {
 
 layout(set = 0, binding = 1) uniform Model {
     mat4 model;
+    mat4 normal;
 } model;
 
-layout(push_constant) uniform PushConstant {
-    mat4 model;
-} pushConstant;
-
-layout(location = 0) out vec3 out_color;
-layout(location = 1) out vec2 out_uv;
+layout(location = 0) out vec3 out_position;
+layout(location = 1) out vec3 out_normal;
+layout(location = 2) out vec2 out_uv;
+layout(location = 3) out vec3 out_color;
 
 void main() {
-    out_color = color;
+    vec4 worldPosition = vec4(position, 1.0) * model.model;
+    vec4 worldNormal = vec4(normal, 1.0) * model.normal;
+
+    out_position = worldPosition.xyz;
+    out_normal = normalize(worldNormal.xyz);
     out_uv = uv;
-    gl_Position = viewProjection.projection * viewProjection.view * model.model * pushConstant.model * vec4(position, 1.0);
+    out_color = color;
+
+    gl_Position = viewProjection.projection * viewProjection.view * worldPosition;
 }
 
 
