@@ -195,7 +195,7 @@ public class ResourceAssetLoader implements AssetLoader {
     @Nonnull
     public Texture loadTexture(@Nonnull FileHandle resourceHandle) {
         logger.info("Loading texture: " + resourceHandle);
-        return renderer.createTexture(resourceHandle.uri());
+        return renderer.createTexture(fileLoader.loadFile(resourceHandle));
     }
 
     @Nonnull

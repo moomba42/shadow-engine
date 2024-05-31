@@ -1,6 +1,7 @@
 package com.alexdl.sdng.backend.vulkan;
 
 import com.alexdl.sdng.Configuration;
+import com.alexdl.sdng.File;
 import com.alexdl.sdng.Renderer;
 import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
 import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
@@ -18,11 +19,10 @@ import org.lwjgl.vulkan.enums.VkPresentModeKHR;
 
 import javax.annotation.Nonnull;
 import javax.inject.Inject;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -163,7 +163,8 @@ public class VulkanRenderer implements Renderer {
             }
         }
 
-        defaultTexture = createTexture("white.png");
+        byte[] defaultTextureData = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAAXNSR0IArs4c6QAAAANQTFRF////p8QbyAAAAA1JREFUGJVjYBgFyAAAARAAATPJ8WoAAAAASUVORK5CYII=");
+        defaultTexture = createTexture(new File(null, BufferUtils.createByteBuffer(defaultTextureData.length).put(defaultTextureData).flip()));
     }
 
     public VkQueue getGraphicsQueue() {
@@ -379,22 +380,15 @@ public class VulkanRenderer implements Renderer {
         }
     }
 
-    private Image createTextureImage(String filename) {
+    private Image createTextureImage(ByteBuffer file) {
         try (VulkanSession vk = new VulkanSession()) {
             IntBuffer widthBuffer = vk.stack().mallocInt(1);
             IntBuffer heightBuffer = vk.stack().mallocInt(1);
             IntBuffer channelsBuffer = vk.stack().mallocInt(1);
 
-            InputStream file = VulkanRenderer.class.getClassLoader().getResourceAsStream(filename);
-            if (file == null) {
-                throw new RuntimeException("Could not open file as resource: " + filename);
-            }
-            ByteBuffer rawDataBuffer = BufferUtils.createByteBuffer(file.available()).put(file.readAllBytes()).flip();
-            file.close();
-
-            ByteBuffer imageData = stbi_load_from_memory(rawDataBuffer, widthBuffer, heightBuffer, channelsBuffer, STBI_rgb_alpha);
+            ByteBuffer imageData = stbi_load_from_memory(file, widthBuffer, heightBuffer, channelsBuffer, STBI_rgb_alpha);
             if (imageData == null) {
-                throw new RuntimeException("Failed to parse image as resource " + filename);
+                throw new RuntimeException("Failed to parse image as resource");
             }
             int width = widthBuffer.get(0);
             int height = heightBuffer.get(0);
@@ -426,8 +420,6 @@ public class VulkanRenderer implements Renderer {
             vk.freeMemory(logicalDevice, imageStagingBuffer.memory(), null);
 
             return image;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
         }
     }
 
@@ -458,8 +450,8 @@ public class VulkanRenderer implements Renderer {
         }
     }
 
-    public @Nonnull Texture createTexture(@Nonnull String path) {
-        Image image = createTextureImage(path);
+    public @Nonnull Texture createTexture(@Nonnull File file) {
+        Image image = createTextureImage(file.dataBuffer());
         images.add(image);
         VkDescriptorSet descriptorSet = createTextureDescriptor(image.view());
         return new Texture(
