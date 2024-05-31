@@ -333,41 +333,45 @@ public class VulkanRenderer implements Renderer {
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
             nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantStruct.SIZE, pushConstant.address());
 
+            int modelIndex = 0;
             int meshIndex = 0;
             for (Model model : modelsToDraw) {
-                vkCmdBindVertexBuffers(
-                        commandBuffer,
-                        0,
-                        vk.stack().longs(model.mesh().data().getVertexBuffer().address()),
-                        vk.stack().longs(0)
-                );
-                vkCmdBindIndexBuffer(
-                        commandBuffer,
-                        model.mesh().data().getIndexBuffer().address(),
-                        0,
-                        VK_INDEX_TYPE_UINT32
-                );
+                int dynamicOffset = modelIndex * modelUniformTransferSpace.elementSize();
+                for (Mesh mesh : model.meshes()) {
+                    vkCmdBindVertexBuffers(
+                            commandBuffer,
+                            0,
+                            vk.stack().longs(mesh.data().getVertexBuffer().address()),
+                            vk.stack().longs(0)
+                    );
+                    vkCmdBindIndexBuffer(
+                            commandBuffer,
+                            mesh.data().getIndexBuffer().address(),
+                            0,
+                            VK_INDEX_TYPE_UINT32
+                    );
 
 
-                int dynamicOffset = meshIndex * modelUniformTransferSpace.elementSize();
-                Texture diffuseTexture = model.mesh().material().diffuse();
-                if(diffuseTexture == null) {
-                    diffuseTexture = defaultTexture;
+                    Texture diffuseTexture = mesh.material().diffuse();
+                    if(diffuseTexture == null) {
+                        diffuseTexture = defaultTexture;
+                    }
+                    vkCmdBindDescriptorSets(
+                            commandBuffer,
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            pipelineLayout.address(),
+                            0,
+                            vk.stack().longs(
+                                    descriptorSets.get(imageIndex).address(),
+                                    diffuseTexture.descriptorSet().address()
+                            ),
+                            vk.stack().ints(dynamicOffset)
+                    );
+
+                    vkCmdDrawIndexed(commandBuffer, mesh.data().getIndexCount(), 1, 0, 0, 0);
+                    meshIndex = meshIndex + 1;
                 }
-                vkCmdBindDescriptorSets(
-                        commandBuffer,
-                        VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        pipelineLayout.address(),
-                        0,
-                        vk.stack().longs(
-                                descriptorSets.get(imageIndex).address(),
-                                diffuseTexture.descriptorSet().address()
-                        ),
-                        vk.stack().ints(dynamicOffset)
-                );
-
-                vkCmdDrawIndexed(commandBuffer, model.mesh().data().getIndexCount(), 1, 0, 0, 0);
-                meshIndex = meshIndex + 1;
+                modelIndex = modelIndex + 1;
             }
 
             vkCmdEndRenderPass(commandBuffer);

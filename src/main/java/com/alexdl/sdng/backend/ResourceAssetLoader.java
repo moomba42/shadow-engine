@@ -74,11 +74,23 @@ public class ResourceAssetLoader implements AssetLoader {
             logger.info("Parsed %d materials", materials.size());
         }
 
+        int numMeshes = aiScene.mNumMeshes();
         PointerBuffer aiMeshes = aiScene.mMeshes();
+        List<Mesh> meshes = new ArrayList<>(numMeshes);
+        for (int i = 0; i < numMeshes; i++) {
+            logger.info("Parsing mesh %d", i);
+            AIMesh aiMesh = AIMesh.create(aiMeshes.get(i));
+            Mesh mesh = parseMesh(aiMesh, materials);
+            meshes.add(mesh);
+        }
 
-        logger.info("Parsing mesh %d", 0);
-        AIMesh aiMesh = AIMesh.create(aiMeshes.get(0));
+        aiReleaseImport(aiScene);
 
+        return new Model(meshes, new Matrix4f().identity());
+    }
+
+    @Nonnull
+    private Mesh parseMesh(AIMesh aiMesh, List<Material> materials) {
         Material material;
         int materialIndex = aiMesh.mMaterialIndex();
         if (materialIndex >= 0 && materialIndex < materials.size()) {
@@ -138,8 +150,6 @@ public class ResourceAssetLoader implements AssetLoader {
         indexBuffer.flip();
         logger.info("Mesh has %d indices", indexBuffer.limit());
 
-        aiReleaseImport(aiScene);
-
         VertexDataStruct.Buffer vertexBuffer = new VertexDataStruct.Buffer(vertices);
 
         MeshData meshData = new MeshData(
@@ -148,10 +158,11 @@ public class ResourceAssetLoader implements AssetLoader {
                 vertexBuffer, indexBuffer
         );
 
+        Mesh mesh = new Mesh(meshData, material);
         vertexBuffer.dispose();
         disposables.add(meshData);
 
-        return new Model(new Mesh(meshData, material), new Matrix4f().identity());
+        return mesh;
     }
 
     @Nonnull
