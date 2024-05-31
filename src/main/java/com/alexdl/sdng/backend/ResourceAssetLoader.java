@@ -2,14 +2,16 @@ package com.alexdl.sdng.backend;
 
 import com.alexdl.sdng.AssetLoader;
 import com.alexdl.sdng.Disposables;
+import com.alexdl.sdng.FileHandle;
+import com.alexdl.sdng.ResourceFileLoader;
 import com.alexdl.sdng.backend.vulkan.Material;
 import com.alexdl.sdng.backend.vulkan.Mesh;
 import com.alexdl.sdng.backend.vulkan.MeshData;
 import com.alexdl.sdng.backend.vulkan.Model;
-import com.alexdl.sdng.backend.vulkan.ResourceHandle;
 import com.alexdl.sdng.backend.vulkan.Texture;
 import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
 import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
+import com.alexdl.sdng.logging.Logger;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
@@ -27,8 +29,6 @@ import org.lwjgl.system.MemoryStack;
 
 import javax.annotation.Nonnull;
 import javax.inject.Inject;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
@@ -37,36 +37,64 @@ import java.util.List;
 import static org.lwjgl.assimp.Assimp.*;
 import static org.lwjgl.system.MemoryUtil.*;
 
-public class StandardAssetLoader implements AssetLoader {
+public class ResourceAssetLoader implements AssetLoader {
     private final VulkanRenderer renderer;
+    private final ResourceFileLoader fileLoader;
     private final Disposables disposables;
+    private final Logger logger;
 
     @Inject
-    public StandardAssetLoader(VulkanRenderer renderer, Disposables disposables) {
+    public ResourceAssetLoader(VulkanRenderer renderer, ResourceFileLoader fileLoader, Disposables disposables, Logger logger) {
         this.renderer = renderer;
+        this.fileLoader = fileLoader;
         this.disposables = disposables;
+        this.logger = logger;
     }
 
     @Nonnull
-    public Model loadModel(@Nonnull ResourceHandle resourceHandle) {
+    public Model loadModel(@Nonnull FileHandle resourceHandle) {
+        logger.info("-----------------");
+        logger.info("Loading model: %s", resourceHandle);
         AIScene aiScene = loadAssimpScene(resourceHandle);
 
         int numMaterials = aiScene.mNumMaterials();
         PointerBuffer aiMaterials = aiScene.mMaterials();
         List<Material> materials = new ArrayList<>(numMaterials);
         for (int i = 0; i < numMaterials; i++) {
+            logger.info("Parsing material %d", i);
             AIMaterial aiMaterial = AIMaterial.create(aiMaterials.get(i));
             Material material = parseMaterial(aiMaterial);
             materials.add(material);
         }
 
+        if(numMaterials != materials.size()) {
+            logger.warn("Parsed materials size is not the same as loaded materials size! loaded=%d, parsed=%d, uri=%s",
+                    numMaterials, materials.size(), resourceHandle);
+        } else {
+            logger.info("Parsed %d materials", materials.size());
+        }
+
         PointerBuffer aiMeshes = aiScene.mMeshes();
+
+        logger.info("Parsing mesh %d", 0);
         AIMesh aiMesh = AIMesh.create(aiMeshes.get(0));
+
+        Material material;
+        int materialIndex = aiMesh.mMaterialIndex();
+        if (materialIndex >= 0 && materialIndex < materials.size()) {
+            material = materials.get(materialIndex);
+            logger.info("Mesh uses material with index %d", materialIndex);
+        } else {
+            material = new Material(null, new Vector4f(1, 1, 1, 1));
+            logger.info("Mesh references an invalid material (%d) so it will use a default one", materialIndex);
+        }
+
         AIVector3D.Buffer aiVertices = aiMesh.mVertices();
         AIVector3D.Buffer aiTextureCoords = aiMesh.mTextureCoords(0);
         AIColor4D.Buffer aiColors = aiMesh.mColors(0);
-        float[] vertices = new float[aiMesh.mNumVertices() * 8];
-        for (int i = 0; i < aiMesh.mNumVertices(); i++) {
+        int numVertices = aiMesh.mNumVertices();
+        float[] vertices = new float[numVertices * 8];
+        for (int i = 0; i < numVertices; i++) {
             AIVector3D aiVertex = aiVertices.get(i);
             vertices[(i * 8) + 0] = aiVertex.x();
             vertices[(i * 8) + 1] = aiVertex.y();
@@ -92,44 +120,38 @@ public class StandardAssetLoader implements AssetLoader {
                 vertices[(i * 8) + 7] = 0.0f;
             }
         }
+        logger.info("Mesh has %d vertices", numVertices);
 
+        int numFaces = aiMesh.mNumFaces();
         AIFace.Buffer faces = aiMesh.mFaces();
-        int[] indices = new int[faces.limit() * 3];
+        IntBuffer indexBuffer = BufferUtils.createIntBuffer(numFaces * 3);
         for (int i = 0; i < faces.limit(); i++) {
             AIFace aiFace = faces.get(i);
             // Only process triangles
             if (aiFace.mNumIndices() == 3) {
                 IntBuffer aiIndices = aiFace.mIndices();
-                indices[(i * 3) + 0] = aiIndices.get(0);
-                indices[(i * 3) + 1] = aiIndices.get(1);
-                indices[(i * 3) + 2] = aiIndices.get(2);
+                indexBuffer.put(aiIndices.get(0));
+                indexBuffer.put(aiIndices.get(1));
+                indexBuffer.put(aiIndices.get(2));
             }
         }
+        indexBuffer.flip();
+        logger.info("Mesh has %d indices", indexBuffer.limit());
+
         aiReleaseImport(aiScene);
 
-        ///////////////////////////////
+        VertexDataStruct.Buffer vertexBuffer = new VertexDataStruct.Buffer(vertices);
 
-        VertexDataStruct.Buffer quad = new VertexDataStruct.Buffer(vertices);
-        IntBuffer quadIndices = BufferUtils.createIntBuffer(indices.length).put(0, indices);
-
-        MeshData data = new MeshData(
+        MeshData meshData = new MeshData(
                 renderer.getGraphicsQueue(),
                 renderer.getGraphicsCommandPool(),
-                quad, quadIndices
+                vertexBuffer, indexBuffer
         );
 
-        quad.dispose();
-        disposables.add(data);
+        vertexBuffer.dispose();
+        disposables.add(meshData);
 
-        Material material;
-        int materialIndex = aiMesh.mMaterialIndex();
-        if (materialIndex >= 0 && materialIndex < materials.size()) {
-            material = materials.get(materialIndex);
-        } else {
-            material = new Material(null, new Vector4f(1, 1, 1, 1));
-        }
-
-        return new Model(new Mesh(data, material), new Matrix4f().identity());
+        return new Model(new Mesh(meshData, material), new Matrix4f().identity());
     }
 
     @Nonnull
@@ -143,14 +165,16 @@ public class StandardAssetLoader implements AssetLoader {
             String diffuseTexturePath = path.dataString();
             Texture diffuseTexture = null;
             if (!diffuseTexturePath.isEmpty()) {
-                // Load diffuse texture here
-                diffuseTexture = loadTexture(new ResourceHandle(diffuseTexturePath));
+                FileHandle resource = new FileHandle(diffuseTexturePath);
+                diffuseTexture = loadTexture(resource);
+                logger.info("Material has diffuse texture: %s", resource);
             }
 
             Vector4f diffuseColor = new Vector4f();
             int result = aiGetMaterialColor(aiMaterial, AI_MATKEY_COLOR_DIFFUSE, aiTextureType_NONE, 0, color);
             if (result == 0) {
                 diffuseColor = new Vector4f(color.r(), color.g(), color.b(), color.a());
+                logger.info("Material has diffuse color: %s", diffuseColor);
             }
             return new Material(diffuseTexture, diffuseColor);
         }
@@ -158,31 +182,16 @@ public class StandardAssetLoader implements AssetLoader {
 
     @Override
     @Nonnull
-    public Texture loadTexture(@Nonnull ResourceHandle resourceHandle) {
+    public Texture loadTexture(@Nonnull FileHandle resourceHandle) {
+        logger.info("Loading texture: " + resourceHandle);
         return renderer.createTexture(resourceHandle.uri());
     }
 
     @Nonnull
-    private ByteBuffer loadResource(@Nonnull ResourceHandle resourceHandle) {
-        InputStream file = StandardAssetLoader.class.getClassLoader().getResourceAsStream(resourceHandle.uri());
-        if (file == null) {
-            throw new RuntimeException("Could not open file as resource: " + resourceHandle.uri());
-        }
-        try {
-            ByteBuffer rawDataBuffer = BufferUtils.createByteBuffer(file.available()).put(file.readAllBytes()).flip();
-            file.close();
-            return rawDataBuffer;
-        } catch (IOException e) {
-            throw new RuntimeException("Could not read as a resource into a buffer", e);
-        }
-    }
-
-    @Nonnull
-    private AIScene loadAssimpScene(@Nonnull ResourceHandle resourceHandle) {
+    private AIScene loadAssimpScene(@Nonnull FileHandle resourceHandle) {
         AIFileIO fileIO = AIFileIO.create()
-                .OpenProc((pFileIo, fileName, openMode) -> {
-                    ByteBuffer data = loadResource(new ResourceHandle(memUTF8(fileName)));
-
+                .OpenProc((pFileIo, pFileName, openMode) -> {
+                    ByteBuffer data = fileLoader.loadFile(new FileHandle(memUTF8(pFileName))).dataBuffer();
                     return AIFile.create()
                             .ReadProc((pFile, pBuffer, size, count) -> {
                                 long max = Math.min(data.remaining() / size, count);

@@ -1,7 +1,8 @@
 package com.alexdl.sdng;
 
-import com.alexdl.sdng.backend.StandardAssetLoader;
+import com.alexdl.sdng.backend.ResourceAssetLoader;
 import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
+import com.alexdl.sdng.logging.Logger;
 import dagger.Binds;
 import dagger.Module;
 import dagger.Provides;
@@ -28,10 +29,19 @@ public abstract class ShadowEngineModule {
     }
 
     @Provides
-    static AssetLoader provideStandardAssetLoader(VulkanRenderer vulkanRenderer, Disposables disposables) {
-        return new StandardAssetLoader(vulkanRenderer, disposables);
+    static ResourceFileLoader provideResourceFileLoader(FileCache fileCache) {
+        return new ResourceFileLoader(fileCache);
     }
 
+    @Provides
+    static LRUFileCache provideLRUFileCache() {
+        return new LRUFileCache(10);
+    }
+
+    @Provides
+    static ResourceAssetLoader provideResourceAssetLoader(VulkanRenderer vulkanRenderer, ResourceFileLoader resourceFileLoader, Disposables disposables) {
+        return new ResourceAssetLoader(vulkanRenderer, resourceFileLoader, disposables, new Logger(ResourceAssetLoader.class));
+    }
 
     @Provides
     @Singleton
@@ -54,4 +64,13 @@ public abstract class ShadowEngineModule {
 
     @Binds
     abstract Renderer bindRenderer(VulkanRenderer vulkanRenderer);
+
+    @Binds
+    abstract FileLoader bindFileLoader(ResourceFileLoader resourceFileLoader);
+
+    @Binds
+    abstract AssetLoader bindAssetLoader(ResourceAssetLoader resourceAssetLoader);
+
+    @Binds
+    abstract FileCache bindFileCache(LRUFileCache lruFileCache);
 }

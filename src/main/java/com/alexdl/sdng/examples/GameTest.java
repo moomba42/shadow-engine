@@ -6,7 +6,7 @@ import com.alexdl.sdng.Renderer;
 import com.alexdl.sdng.Runner;
 import com.alexdl.sdng.ShadowEngineModule;
 import com.alexdl.sdng.backend.vulkan.Model;
-import com.alexdl.sdng.backend.vulkan.ResourceHandle;
+import com.alexdl.sdng.FileHandle;
 import dagger.Binds;
 import dagger.Component;
 import dagger.Module;
@@ -50,8 +50,8 @@ public class GameTest implements Game {
 
     @Override
     public void init() {
-        teapot = loader.loadModel(new ResourceHandle("teapot.obj"));
-        cube = loader.loadModel(new ResourceHandle("cube.obj"));
+        teapot = loader.loadModel(new FileHandle("teapot.obj"));
+        cube = loader.loadModel(new FileHandle("cube.obj"));
     }
 
     @Override
