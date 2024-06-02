@@ -21,11 +21,11 @@ layout(location = 2) out vec2 out_uv;
 layout(location = 3) out vec3 out_color;
 
 void main() {
-    vec4 worldPosition = vec4(position, 1.0) * model.model;
-    vec4 worldNormal = vec4(normal, 1.0) * model.normal;
+    vec4 worldPosition = model.model * vec4(position, 1.0);
+    vec4 worldNormal = model.normal * vec4(normal, 1.0);
 
     out_position = worldPosition.xyz;
-    out_normal = normalize(worldNormal.xyz);
+    out_normal = worldNormal.xyz;
     out_uv = uv;
     out_color = color;
 

@@ -13,11 +13,11 @@ struct Light{
     float decaySpeed;
     float intensity;
 };
-layout(set = 1, binding = 0) uniform Environment {
-    uint lightCount;
+layout(set = 1, binding = 0) uniform sampler2D diffuseSampler;
+layout(set = 2, binding = 0) uniform Environment {
+    int lightCount;
     Light lights[MAX_LIGHTS];
 } environment;
-layout(set = 1, binding = 1) uniform sampler2D diffuseSampler;
 
 layout(location = 0) out vec4 out_color;
 
@@ -44,5 +44,6 @@ void main() {
     }
     totalLightStrength = clamp(totalLightStrength, 0.0, 1.0);
 
-    out_color = texture(diffuseSampler, in_uv) * totalLightStrength * vec4(in_color, 1.0);
+    out_color = texture(diffuseSampler, in_uv) * vec4(in_color, 1.0) * vec4(vec3(totalLightStrength), 1.0);
+//    out_color = vec4(environment.lights[0].position, 1.0);
 }

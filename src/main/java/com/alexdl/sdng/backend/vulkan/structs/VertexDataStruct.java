@@ -6,7 +6,7 @@ import static org.lwjgl.system.MemoryUtil.memFloatBuffer;
 import static org.lwjgl.system.MemoryUtil.memPutFloat;
 
 public class VertexDataStruct extends MemoryBlock<VertexDataStruct> {
-    private static final int SIZE_BYTES = (VECTOR_3F_SIZE_BYTES * 2) + VECTOR_2F_SIZE_BYTES;
+    private static final int SIZE_BYTES = (VECTOR_3F_SIZE_BYTES * 3) + VECTOR_2F_SIZE_BYTES;
 
     public VertexDataStruct() {
         super(SIZE_BYTES);
@@ -23,16 +23,23 @@ public class VertexDataStruct extends MemoryBlock<VertexDataStruct> {
         return this;
     }
 
-    public VertexDataStruct color(float r, float g, float b) {
-        memPutFloat(address() + VECTOR_3F_SIZE_BYTES, r);
-        memPutFloat(address() + VECTOR_3F_SIZE_BYTES + Float.BYTES, g);
-        memPutFloat(address() + VECTOR_3F_SIZE_BYTES + (Float.BYTES * 2), b);
+    public VertexDataStruct normal(float x, float y, float z) {
+        memPutFloat(address() + VECTOR_3F_SIZE_BYTES, x);
+        memPutFloat(address() + VECTOR_3F_SIZE_BYTES + Float.BYTES, y);
+        memPutFloat(address() + VECTOR_3F_SIZE_BYTES + (Float.BYTES * 2), z);
         return this;
     }
 
     public VertexDataStruct uv(float u, float v) {
         memPutFloat(address() + (VECTOR_3F_SIZE_BYTES * 2), u);
         memPutFloat(address() + (VECTOR_3F_SIZE_BYTES * 2) + Float.BYTES, v);
+        return this;
+    }
+
+    public VertexDataStruct color(float r, float g, float b) {
+        memPutFloat(address() + (VECTOR_3F_SIZE_BYTES * 2) + VECTOR_2F_SIZE_BYTES, r);
+        memPutFloat(address() + (VECTOR_3F_SIZE_BYTES * 2) + VECTOR_2F_SIZE_BYTES + Float.BYTES, g);
+        memPutFloat(address() + (VECTOR_3F_SIZE_BYTES * 2) + VECTOR_2F_SIZE_BYTES + (Float.BYTES * 2), b);
         return this;
     }
 

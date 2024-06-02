@@ -9,24 +9,36 @@ import static com.alexdl.sdng.backend.vulkan.SizeConstants.MATRIX_4F_SIZE_FLOATS
 import static org.lwjgl.system.MemoryUtil.memFloatBuffer;
 
 public class ModelDataStruct extends MemoryBlock<ModelDataStruct> {
-    private final FloatBuffer transform;
+    private final FloatBuffer modelTransform;
+    private final FloatBuffer normalTransform;
 
     public ModelDataStruct() {
-        super(MATRIX_4F_SIZE_BYTES);
-        this.transform = memFloatBuffer(address(), MATRIX_4F_SIZE_FLOATS);
+        super(MATRIX_4F_SIZE_BYTES * 2);
+        this.modelTransform = memFloatBuffer(address(), MATRIX_4F_SIZE_FLOATS);
+        this.normalTransform = memFloatBuffer(address() + MATRIX_4F_SIZE_BYTES, MATRIX_4F_SIZE_FLOATS);
     }
 
     private ModelDataStruct(long address) {
-        super(address, MATRIX_4F_SIZE_BYTES);
-        this.transform = memFloatBuffer(address(), MATRIX_4F_SIZE_FLOATS);
+        super(address, MATRIX_4F_SIZE_BYTES * 2);
+        this.modelTransform = memFloatBuffer(address(), MATRIX_4F_SIZE_FLOATS);
+        this.normalTransform = memFloatBuffer(address() + MATRIX_4F_SIZE_BYTES, MATRIX_4F_SIZE_FLOATS);
     }
 
-    public Matrix4f transform() {
-        return new Matrix4f(transform);
+    public Matrix4f modelTransform() {
+        return new Matrix4f(modelTransform);
     }
 
-    public ModelDataStruct transform(Matrix4f value) {
-        value.get(0, transform);
+    public ModelDataStruct modelTransform(Matrix4f value) {
+        value.get(0, modelTransform);
+        return this;
+    }
+
+    public Matrix4f normalTransform() {
+        return new Matrix4f(normalTransform);
+    }
+
+    public ModelDataStruct normalTransform(Matrix4f value) {
+        value.get(0, normalTransform);
         return this;
     }
 

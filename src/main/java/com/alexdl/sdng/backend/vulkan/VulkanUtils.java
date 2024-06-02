@@ -1067,6 +1067,7 @@ public class VulkanUtils {
                         .descriptorCount(1)
                         .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
                         .pBufferInfo(sceneDescriptorBufferInfos);
+
                 VkDescriptorBufferInfo.Buffer modelDescriptorBufferInfos = VkDescriptorBufferInfo.calloc(1, vk.stack())
                         .buffer(modelUniformBuffers.get(i).address())
                         .offset(0)
@@ -1117,7 +1118,7 @@ public class VulkanUtils {
                     .stride(Vertex.BYTES)
                     .inputRate(VK_VERTEX_INPUT_RATE_VERTEX);
 
-            VkVertexInputAttributeDescription.Buffer vertexInputAttributeDescriptions = VkVertexInputAttributeDescription.calloc(3, vk.stack());
+            VkVertexInputAttributeDescription.Buffer vertexInputAttributeDescriptions = VkVertexInputAttributeDescription.calloc(4, vk.stack());
             vertexInputAttributeDescriptions.get(0)
                     .location(0)
                     .binding(0)
@@ -1127,12 +1128,17 @@ public class VulkanUtils {
                     .location(1)
                     .binding(0)
                     .format(VK_FORMAT_R32G32B32_SFLOAT)
-                    .offset(Vertex.COLOR_OFFSET_BYTES);
+                    .offset(Vertex.NORMAL_OFFSET_BYTES);
             vertexInputAttributeDescriptions.get(2)
                     .location(2)
                     .binding(0)
                     .format(VK_FORMAT_R32G32_SFLOAT)
                     .offset(Vertex.UV_OFFSET_BYTES);
+            vertexInputAttributeDescriptions.get(3)
+                    .location(3)
+                    .binding(0)
+                    .format(VK_FORMAT_R32G32B32_SFLOAT)
+                    .offset(Vertex.COLOR_OFFSET_BYTES);
 
             VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = VkPipelineVertexInputStateCreateInfo.calloc(vk.stack())
                     .sType$Default()

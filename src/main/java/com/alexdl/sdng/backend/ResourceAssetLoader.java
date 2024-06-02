@@ -102,33 +102,46 @@ public class ResourceAssetLoader implements AssetLoader {
 
         AIVector3D.Buffer aiVertices = aiMesh.mVertices();
         AIVector3D.Buffer aiTextureCoords = aiMesh.mTextureCoords(0);
+        AIVector3D.Buffer aiNormals = aiMesh.mNormals();
         AIColor4D.Buffer aiColors = aiMesh.mColors(0);
         int numVertices = aiMesh.mNumVertices();
-        float[] vertices = new float[numVertices * 8];
+        int vertexSize = 11;
+        float[] vertices = new float[numVertices * vertexSize];
         for (int i = 0; i < numVertices; i++) {
             AIVector3D aiVertex = aiVertices.get(i);
-            vertices[(i * 8) + 0] = aiVertex.x();
-            vertices[(i * 8) + 1] = aiVertex.y();
-            vertices[(i * 8) + 2] = aiVertex.z();
+            vertices[(i * vertexSize) + 0] = aiVertex.x();
+            vertices[(i * vertexSize) + 1] = aiVertex.y();
+            vertices[(i * vertexSize) + 2] = aiVertex.z();
 
-            if (aiColors != null) {
-                AIColor4D aiColor = aiColors.get(i);
-                vertices[(i * 8) + 3] = aiColor.r();
-                vertices[(i * 8) + 4] = aiColor.g();
-                vertices[(i * 8) + 5] = aiColor.b();
+            if(aiNormals != null) {
+                AIVector3D aiNormal = aiNormals.get(i);
+                vertices[(i * vertexSize) + 3] = aiNormal.x();
+                vertices[(i * vertexSize) + 4] = aiNormal.y();
+                vertices[(i * vertexSize) + 5] = aiNormal.z();
             } else {
-                vertices[(i * 8) + 3] = 1.0f;
-                vertices[(i * 8) + 4] = 1.0f;
-                vertices[(i * 8) + 5] = 1.0f;
+                vertices[(i * vertexSize) + 3] = 0.0f;
+                vertices[(i * vertexSize) + 4] = 0.0f;
+                vertices[(i * vertexSize) + 5] = 1.0f;
             }
 
             if (aiTextureCoords != null) {
                 AIVector3D aiTextureCoord = aiTextureCoords.get(i);
-                vertices[(i * 8) + 6] = aiTextureCoord.x();
-                vertices[(i * 8) + 7] = aiTextureCoord.y();
+                vertices[(i * vertexSize) + 6] = aiTextureCoord.x();
+                vertices[(i * vertexSize) + 7] = aiTextureCoord.y();
             } else {
-                vertices[(i * 8) + 6] = 0.0f;
-                vertices[(i * 8) + 7] = 0.0f;
+                vertices[(i * vertexSize) + 6] = 0.0f;
+                vertices[(i * vertexSize) + 7] = 0.0f;
+            }
+
+            if (aiColors != null) {
+                AIColor4D aiColor = aiColors.get(i);
+                vertices[(i * vertexSize) + 8] = aiColor.r();
+                vertices[(i * vertexSize) + 9] = aiColor.g();
+                vertices[(i * vertexSize) + 10] = aiColor.b();
+            } else {
+                vertices[(i * vertexSize) + 8] = 1.0f;
+                vertices[(i * vertexSize) + 9] = 1.0f;
+                vertices[(i * vertexSize) + 10] = 1.0f;
             }
         }
         logger.info("Mesh has %d vertices", numVertices);
@@ -230,7 +243,7 @@ public class ResourceAssetLoader implements AssetLoader {
                     aiFile.FileSizeProc().free();
                 });
         AIScene aiScene = aiImportFileEx(resourceHandle.uri(),
-                aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices, fileIO);
+                aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals, fileIO);
         fileIO.OpenProc().free();
         fileIO.CloseProc().free();
 

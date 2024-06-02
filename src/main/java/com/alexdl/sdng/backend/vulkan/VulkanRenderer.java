@@ -3,6 +3,7 @@ package com.alexdl.sdng.backend.vulkan;
 import com.alexdl.sdng.Configuration;
 import com.alexdl.sdng.File;
 import com.alexdl.sdng.Renderer;
+import com.alexdl.sdng.backend.vulkan.structs.EnvironmentDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
 import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.PushConstantStruct;
@@ -65,13 +66,18 @@ public class VulkanRenderer implements Renderer {
     private final List<SwapchainImage> swapchainImages;
     private final List<VkFramebuffer> swapchainFramebuffers;
     private final List<VkCommandBuffer> swapchainCommandBuffers;
-    private final List<VkBuffer> sceneUniformBuffers;
     private final List<VkBuffer> modelUniformBuffers;
     private final MemoryBlockBuffer<ModelDataStruct> modelUniformTransferSpace;
     private final List<VkDescriptorSet> descriptorSets;
 
     // Assets
+    private final List<VkBuffer> sceneUniformBuffers; // For each swapchain image
     private final SceneDataStruct sceneData;
+
+    // Environment
+    private final EnvironmentDataStruct environmentData;
+    private final UniformBufferObject<EnvironmentDataStruct> environmentUbo;
+
     // Textures
     private final List<Image> images;
     private final VkDescriptorSetLayout samplerSetLayout;
@@ -111,9 +117,15 @@ public class VulkanRenderer implements Renderer {
         pushConstant = new PushConstantStruct();
         depthBufferImage = createDepthBufferImage(logicalDevice, swapchainImageConfig.extent().width(), swapchainImageConfig.extent().height());
 
+        environmentData = new EnvironmentDataStruct(10);
+        environmentData.setLightCount(2);
+        environmentData.setLight(0, -3, 3, 4, 7, 0f, 0.1f, 5f);
+        environmentData.setLight(1, 3, -3, 0, 7, 0, 0.1f, 5f);
+        environmentUbo = new UniformBufferObject<>(logicalDevice, swapchainImages.size(), environmentData.size());
+
         descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
         samplerSetLayout = createSamplerSetLayout(logicalDevice);
-        pipelineLayout = createPipelineLayout(logicalDevice, List.of(descriptorSetLayout, samplerSetLayout));
+        pipelineLayout = createPipelineLayout(logicalDevice, List.of(descriptorSetLayout, samplerSetLayout, environmentUbo.getDescriptorSetLayout()));
         renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format(), depthBufferImage.format());
         graphicsPipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
         graphicsCommandPool = createCommandPool(logicalDevice, queueIndices.graphical());
@@ -287,15 +299,22 @@ public class VulkanRenderer implements Renderer {
 
     private void updateUniforms(int imageIndex) {
         try (VulkanSession vk = new VulkanSession()) {
+            // Scene
             VkDeviceMemory sceneMemory = sceneUniformBuffers.get(imageIndex).memory();
             assert sceneMemory != null;
             long sceneTarget = vk.mapMemoryPointer(logicalDevice, sceneMemory, 0, sceneData.size(), 0);
             memCopy(sceneData.address(), sceneTarget, sceneData.size());
             vk.unmapMemory(logicalDevice, sceneMemory);
 
+            // Environment
+            environmentUbo.updateBuffer(imageIndex, environmentData);
+
+            // Models
             int modelCounter = 0;
             for (Model model : modelsToDraw) {
-                modelUniformTransferSpace.get(modelCounter).transform(model.transform());
+                modelUniformTransferSpace.get(modelCounter).modelTransform(model.transform());
+                // TODO: Replace this with actual normal matrix
+                modelUniformTransferSpace.get(modelCounter).normalTransform(new Matrix4f(model.transform()).invert().transpose());
                 modelCounter = modelCounter + 1;
             }
             VkDeviceMemory modelMemory = modelUniformBuffers.get(imageIndex).memory();
@@ -332,7 +351,9 @@ public class VulkanRenderer implements Renderer {
             throwIfFailed(vkBeginCommandBuffer(commandBuffer, commandBufferBeginInfo));
             vkCmdBeginRenderPass(commandBuffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
-            nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantStruct.SIZE, pushConstant.address());
+
+            // TODO: Doe something about the push constant
+            // nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantStruct.SIZE, pushConstant.address());
 
             int modelIndex = 0;
             int meshIndex = 0;
@@ -364,7 +385,8 @@ public class VulkanRenderer implements Renderer {
                             0,
                             vk.stack().longs(
                                     descriptorSets.get(imageIndex).address(),
-                                    diffuseTexture.descriptorSet().address()
+                                    diffuseTexture.descriptorSet().address(),
+                                    environmentUbo.getDescriptorSet(imageIndex).address()
                             ),
                             vk.stack().ints(dynamicOffset)
                     );
