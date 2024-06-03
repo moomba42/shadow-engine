@@ -63,7 +63,8 @@ public class GameTest implements Game {
                 .translate(0, -1.5f, 0);
         cube.transform().set(new Matrix4f().identity()
                 .translate(3.0f, 0.0f, -2.0f)
-                .rotate((float) tan(sin(sin(timer * 3))), 1, 0, 0));
+                .rotate((float) timer / 4f, 0, 1, 0)
+                .rotate((float) tan(sin(sin(timer * 3))) * 0.1f, 1, 0, 0));
         renderer.updatePushConstant(new Matrix4f().identity().rotate((float) timer / 2, 0, 1, 0));
     }
 

@@ -119,8 +119,8 @@ public class VulkanRenderer implements Renderer {
 
         environmentData = new EnvironmentDataStruct(10);
         environmentData.setLightCount(2);
-        environmentData.setLight(0, -3, 3, 4, 7, 0f, 0.1f, 5f);
-        environmentData.setLight(1, 3, -3, 0, 7, 0, 0.1f, 5f);
+        environmentData.setLight(0, -3, 3, 4, 1, 0, 0, 6, 0f, 0.1f);
+        environmentData.setLight(1, 3, -3, 0, 0, 1, 0, 6, 0, 0.1f);
         environmentUbo = new UniformBufferObject<>(logicalDevice, swapchainImages.size(), environmentData.size());
 
         descriptorSetLayout = createDescriptorSetLayout(logicalDevice);

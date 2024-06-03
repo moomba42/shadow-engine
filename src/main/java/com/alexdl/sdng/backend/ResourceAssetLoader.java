@@ -243,7 +243,7 @@ public class ResourceAssetLoader implements AssetLoader {
                     aiFile.FileSizeProc().free();
                 });
         AIScene aiScene = aiImportFileEx(resourceHandle.uri(),
-                aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals, fileIO);
+                aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices | aiProcess_GenSmoothNormals, fileIO);
         fileIO.OpenProc().free();
         fileIO.CloseProc().free();
 
