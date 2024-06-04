@@ -40,7 +40,7 @@ public class MemoryAlignment {
             element.setAlignedSize(alignedSize);
             offset = alignedOffset + alignedSize;
         }
-        return new MemoryAlignment(align(alignment, offset), alignment); // aligned size
+        return new MemoryAlignment(alignment, align(alignment, offset)); // aligned size
     }
 
     private static int align(int alignment, int bytes) {

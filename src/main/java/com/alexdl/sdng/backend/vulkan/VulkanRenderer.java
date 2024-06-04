@@ -3,7 +3,7 @@ package com.alexdl.sdng.backend.vulkan;
 import com.alexdl.sdng.Configuration;
 import com.alexdl.sdng.File;
 import com.alexdl.sdng.Renderer;
-import com.alexdl.sdng.backend.vulkan.structs.EnvironmentDataStruct;
+import com.alexdl.sdng.backend.vulkan.structs.EnvironmentUboDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
 import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.PushConstantStruct;
@@ -75,8 +75,8 @@ public class VulkanRenderer implements Renderer {
     private final SceneDataStruct sceneData;
 
     // Environment
-    private final EnvironmentDataStruct environmentData;
-    private final UniformBufferObject<EnvironmentDataStruct> environmentUbo;
+    private final EnvironmentUboDataStruct environmentData;
+    private final UniformBufferObject<EnvironmentUboDataStruct> environmentUbo;
 
     // Textures
     private final List<Image> images;
@@ -117,7 +117,7 @@ public class VulkanRenderer implements Renderer {
         pushConstant = new PushConstantStruct();
         depthBufferImage = createDepthBufferImage(logicalDevice, swapchainImageConfig.extent().width(), swapchainImageConfig.extent().height());
 
-        environmentData = new EnvironmentDataStruct(10);
+        environmentData = new EnvironmentUboDataStruct(10);
         environmentData.setLightCount(2);
         environmentData.setLight(0, -3, 3, 4, 1, 0, 0, 6, 0f, 0.1f);
         environmentData.setLight(1, 3, -3, 0, 0, 1, 0, 6, 0, 0.1f);
