@@ -1,5 +1,6 @@
 package com.alexdl.sdng.backend.vulkan.structs;
 
+import static com.alexdl.sdng.backend.vulkan.structs.MemoryAlignment.*;
 import static org.lwjgl.system.MemoryUtil.memPutFloat;
 import static org.lwjgl.system.MemoryUtil.memPutInt;
 
@@ -12,6 +13,18 @@ public class EnvironmentDataStruct extends MemoryBlock<EnvironmentDataStruct> {
      */
     private static final int LIGHT_OFFSET = 16;
     private static final int LIGHT_SIZE_BYTES_ALIGNED = 48;
+
+    private static final MemoryAlignment alignmentLightCount = glslInt();
+    private static final MemoryAlignment alignmentLightPosition = glslVec3();
+    private static final MemoryAlignment alignmentLightColor = glslVec3();
+    private static final MemoryAlignment alignmentLightOuterRadius = glslFloat();
+    private static final MemoryAlignment alignmentLightInnerRadius = glslFloat();
+    private static final MemoryAlignment alignmentLightDecaySpeed = glslFloat();
+    private static final MemoryAlignment alignmentLight = align(16, alignmentLightPosition, alignmentLightColor, alignmentLightOuterRadius, alignmentLightInnerRadius, alignmentLightDecaySpeed);
+    static {
+        align(0, alignmentLightCount, alignmentLight);
+    }
+
     private final int maxLightCount;
 
     public EnvironmentDataStruct(int maxLightCount) {
@@ -26,21 +39,23 @@ public class EnvironmentDataStruct extends MemoryBlock<EnvironmentDataStruct> {
 
     public void setLightCount(int lightCount) {
         assert lightCount >= 0 && lightCount < maxLightCount;
-        memPutInt(address(), lightCount);
+        memPutInt(address() + alignmentLightCount.getOffset(), lightCount);
     }
 
     @SuppressWarnings("PointlessArithmeticExpression")
     public void setLight(int index, float positionX, float positionY, float positionZ, float colorR, float colorG, float colorB, float outerRadius, float innerRadius, float decaySpeed) {
-        long address = address() + LIGHT_OFFSET + ((long) index * LIGHT_SIZE_BYTES_ALIGNED);
-        memPutFloat(address + (Float.BYTES * 0), positionX);
-        memPutFloat(address + (Float.BYTES * 1), positionY);
-        memPutFloat(address + (Float.BYTES * 2), positionZ);
-        memPutFloat(address + (Float.BYTES * 4), colorR);
-        memPutFloat(address + (Float.BYTES * 5), colorG);
-        memPutFloat(address + (Float.BYTES * 6), colorB);
-        memPutFloat(address + (Float.BYTES * 8), outerRadius);
-        memPutFloat(address + (Float.BYTES * 9), innerRadius);
-        memPutFloat(address + (Float.BYTES * 10), decaySpeed);
+        long address = address() + alignmentLight.getOffset() + ((long) index * alignmentLight.getAlignedSize());
+        memPutFloat(address + alignmentLightPosition.getOffset() + (Float.BYTES * 0), positionX);
+        memPutFloat(address + alignmentLightPosition.getOffset() + (Float.BYTES * 1), positionY);
+        memPutFloat(address + alignmentLightPosition.getOffset() + (Float.BYTES * 2), positionZ);
+        // vec3s are aligned to 4 floats, so we skip a byte here
+        memPutFloat(address + alignmentLightColor.getOffset() + (Float.BYTES * 0), colorR);
+        memPutFloat(address + alignmentLightColor.getOffset() + (Float.BYTES * 1), colorG);
+        memPutFloat(address + alignmentLightColor.getOffset() + (Float.BYTES * 2), colorB);
+        // vec3s are aligned to 4 floats, so we skip a byte here
+        memPutFloat(address + alignmentLightOuterRadius.getOffset(), outerRadius);
+        memPutFloat(address + alignmentLightInnerRadius.getOffset(), innerRadius);
+        memPutFloat(address + alignmentLightDecaySpeed.getOffset(), decaySpeed);
     }
 
     @Override
