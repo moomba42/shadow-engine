@@ -1,6 +1,5 @@
 package com.alexdl.sdng.backend.vulkan;
 
-import com.alexdl.sdng.backend.vulkan.structs.PushConstantStruct;
 import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
@@ -902,15 +901,18 @@ public class VulkanUtils {
         try (VulkanSession vk = new VulkanSession()) {
             LongBuffer descriptorSetLayoutsBuffer = toAddressBuffer(descriptorSetLayouts, vk.stack(), VkDescriptorSetLayout::address);
 
-            VkPushConstantRange.Buffer pushConstantRange = VkPushConstantRange.calloc(1, vk.stack())
-                    .stageFlags(VK_SHADER_STAGE_VERTEX_BIT)
-                    .offset(0)
-                    .size(PushConstantStruct.SIZE);
+            // This is how you would add a push constant to the pipeline layout
+            //
+            // VkPushConstantRange.Buffer pushConstantRange = VkPushConstantRange.calloc(1, vk.stack())
+            //         .stageFlags(VK_SHADER_STAGE_VERTEX_BIT)
+            //         .offset(0)
+            //         .size(PushConstantStruct.SIZE);
 
             VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(vk.stack())
                     .sType$Default()
                     .pSetLayouts(descriptorSetLayoutsBuffer)
-                    .pPushConstantRanges(pushConstantRange);
+            //        .pPushConstantRanges(pushConstantRange)
+                    .pPushConstantRanges(null);
 
             return vk.createPipelineLayout(logicalDevice, pipelineLayoutCreateInfo, null);
         }

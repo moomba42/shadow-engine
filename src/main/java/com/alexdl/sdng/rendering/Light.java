@@ -1,4 +1,4 @@
-package com.alexdl.sdng.backend;
+package com.alexdl.sdng.rendering;
 
 import org.joml.Vector3f;
 

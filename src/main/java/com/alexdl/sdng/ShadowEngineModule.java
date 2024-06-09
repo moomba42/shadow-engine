@@ -5,6 +5,7 @@ import com.alexdl.sdng.backend.ResourceAssetLoader;
 import com.alexdl.sdng.backend.ResourceFileLoader;
 import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
 import com.alexdl.sdng.logging.Logger;
+import com.alexdl.sdng.rendering.Renderer;
 import dagger.Binds;
 import dagger.Module;
 import dagger.Provides;
@@ -41,8 +42,8 @@ public abstract class ShadowEngineModule {
     }
 
     @Provides
-    static ResourceAssetLoader provideResourceAssetLoader(VulkanRenderer vulkanRenderer, ResourceFileLoader resourceFileLoader, Disposables disposables) {
-        return new ResourceAssetLoader(vulkanRenderer, resourceFileLoader, disposables, new Logger(ResourceAssetLoader.class));
+    static ResourceAssetLoader provideResourceAssetLoader(VulkanRenderer vulkanRenderer, ResourceFileLoader resourceFileLoader) {
+        return new ResourceAssetLoader(vulkanRenderer, resourceFileLoader, new Logger(ResourceAssetLoader.class));
     }
 
     @Provides

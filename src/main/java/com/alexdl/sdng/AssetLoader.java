@@ -1,7 +1,7 @@
 package com.alexdl.sdng;
 
-import com.alexdl.sdng.backend.vulkan.Model;
-import com.alexdl.sdng.backend.vulkan.Texture;
+import com.alexdl.sdng.rendering.Model;
+import com.alexdl.sdng.rendering.Texture;
 
 import javax.annotation.Nonnull;
 

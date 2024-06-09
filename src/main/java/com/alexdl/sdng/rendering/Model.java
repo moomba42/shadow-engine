@@ -1,4 +1,4 @@
-package com.alexdl.sdng.backend.vulkan;
+package com.alexdl.sdng.rendering;
 
 import org.joml.Matrix4f;
 

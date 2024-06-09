@@ -2,13 +2,15 @@ package com.alexdl.sdng.backend.vulkan;
 
 import com.alexdl.sdng.Configuration;
 import com.alexdl.sdng.File;
-import com.alexdl.sdng.Renderer;
-import com.alexdl.sdng.backend.Light;
 import com.alexdl.sdng.backend.vulkan.structs.EnvironmentUboDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
 import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
-import com.alexdl.sdng.backend.vulkan.structs.PushConstantStruct;
 import com.alexdl.sdng.backend.vulkan.structs.SceneDataStruct;
+import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
+import com.alexdl.sdng.rendering.Light;
+import com.alexdl.sdng.rendering.Mesh;
+import com.alexdl.sdng.rendering.Model;
+import com.alexdl.sdng.rendering.Renderer;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -49,8 +51,6 @@ public class VulkanRenderer implements Renderer {
 
     private final VkDevice logicalDevice;
 
-    private final PushConstantStruct pushConstant;
-
     private final VkQueue graphicsQueue;
     private final VkQueue presentQueue;
 
@@ -74,6 +74,7 @@ public class VulkanRenderer implements Renderer {
     private final List<VkDescriptorSet> descriptorSets;
 
     // Assets
+    private final List<VulkanMeshData> meshes;
     private final List<VkBuffer> sceneUniformBuffers; // For each swapchain image
     private final SceneDataStruct sceneData;
 
@@ -94,12 +95,13 @@ public class VulkanRenderer implements Renderer {
     private final List<VkSemaphore> frameImageAvailableSemaphores;
     private final List<VkSemaphore> frameDrawSemaphores;
 
-    private final Texture defaultTexture;
+    private final VulkanTexture defaultTexture;
 
     private int currentFrame = 0;
 
     @Inject
     public VulkanRenderer(GlfwWindow window, Configuration configuration) {
+        meshes = new ArrayList<>();
         modelsToDraw = new HashSet<>();
         instance = createInstance(configuration.debuggingEnabled());
         surface = createSurface(instance, window.address());
@@ -117,7 +119,6 @@ public class VulkanRenderer implements Renderer {
         graphicsQueue = findFirstQueueByFamily(logicalDevice, queueIndices.graphical());
         presentQueue = findFirstQueueByFamily(logicalDevice, queueIndices.surfaceSupporting());
 
-        pushConstant = new PushConstantStruct();
         depthBufferImage = createDepthBufferImage(logicalDevice, swapchainImageConfig.extent().width(), swapchainImageConfig.extent().height());
 
         environmentData = new EnvironmentUboDataStruct(MAX_LIGHTS);
@@ -177,19 +178,6 @@ public class VulkanRenderer implements Renderer {
 
         byte[] defaultTextureData = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAAXNSR0IArs4c6QAAAANQTFRF////p8QbyAAAAA1JREFUGJVjYBgFyAAAARAAATPJ8WoAAAAASUVORK5CYII=");
         defaultTexture = createTexture(new File(null, BufferUtils.createByteBuffer(defaultTextureData.length).put(defaultTextureData).flip()));
-    }
-
-    public VkQueue getGraphicsQueue() {
-        return graphicsQueue;
-    }
-
-    public VkCommandPool getGraphicsCommandPool() {
-        return graphicsCommandPool;
-    }
-
-    @Override
-    public void updatePushConstant(@Nonnull Matrix4f transform) {
-        pushConstant.transform(transform);
     }
 
     @Override
@@ -266,6 +254,9 @@ public class VulkanRenderer implements Renderer {
 
         vkDestroySampler(logicalDevice, sampler.address(), null);
 
+        for (VulkanMeshData mesh : meshes) {
+            mesh.dispose();
+        }
         for (Image image : images) {
             vkDestroyImageView(logicalDevice, image.view().address(), null);
             vkDestroyImage(logicalDevice, image.image().address(), null);
@@ -371,7 +362,7 @@ public class VulkanRenderer implements Renderer {
             vkCmdBeginRenderPass(commandBuffer, renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.address());
 
-            // TODO: Doe something about the push constant
+            // Example of how to push a push constant
             // nvkCmdPushConstants(commandBuffer, pipelineLayout.address(), VK_SHADER_STAGE_VERTEX_BIT, 0, PushConstantStruct.SIZE, pushConstant.address());
 
             int modelIndex = 0;
@@ -379,21 +370,21 @@ public class VulkanRenderer implements Renderer {
             for (Model model : modelsToDraw) {
                 int dynamicOffset = modelIndex * modelUniformTransferSpace.elementSize();
                 for (Mesh mesh : model.meshes()) {
+                    VulkanMeshData meshData = (VulkanMeshData) mesh.data();
                     vkCmdBindVertexBuffers(
                             commandBuffer,
                             0,
-                            vk.stack().longs(mesh.data().getVertexBuffer().address()),
+                            vk.stack().longs(meshData.getVertexBuffer().address()),
                             vk.stack().longs(0)
                     );
                     vkCmdBindIndexBuffer(
                             commandBuffer,
-                            mesh.data().getIndexBuffer().address(),
+                            meshData.getIndexBuffer().address(),
                             0,
                             VK_INDEX_TYPE_UINT32
                     );
 
-
-                    Texture diffuseTexture = mesh.material().diffuse();
+                    VulkanTexture diffuseTexture = (VulkanTexture) mesh.material().diffuse();
                     if (diffuseTexture == null) {
                         diffuseTexture = defaultTexture;
                     }
@@ -410,7 +401,7 @@ public class VulkanRenderer implements Renderer {
                             vk.stack().ints(dynamicOffset)
                     );
 
-                    vkCmdDrawIndexed(commandBuffer, mesh.data().getIndexCount(), 1, 0, 0, 0);
+                    vkCmdDrawIndexed(commandBuffer, meshData.getIndexCount(), 1, 0, 0, 0);
                     meshIndex = meshIndex + 1;
                 }
                 modelIndex = modelIndex + 1;
@@ -491,14 +482,23 @@ public class VulkanRenderer implements Renderer {
         }
     }
 
-    public @Nonnull Texture createTexture(@Nonnull File file) {
+    public @Nonnull VulkanTexture createTexture(@Nonnull File file) {
         Image image = createTextureImage(file.dataBuffer());
         images.add(image);
         VkDescriptorSet descriptorSet = createTextureDescriptor(image.view());
-        return new Texture(
+        return new VulkanTexture(
                 descriptorSet,
                 image
         );
     }
 
+    public @Nonnull VulkanMeshData createMeshData(VertexDataStruct.Buffer vertexBuffer, IntBuffer indexBuffer) {
+        VulkanMeshData meshData = new VulkanMeshData(
+                graphicsQueue,
+                graphicsCommandPool,
+                vertexBuffer, indexBuffer
+        );
+        meshes.add(meshData);
+        return meshData;
+    }
 }

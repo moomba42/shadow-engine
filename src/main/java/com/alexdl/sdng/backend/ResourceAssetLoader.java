@@ -1,16 +1,15 @@
 package com.alexdl.sdng.backend;
 
 import com.alexdl.sdng.AssetLoader;
-import com.alexdl.sdng.Disposables;
 import com.alexdl.sdng.FileHandle;
-import com.alexdl.sdng.backend.vulkan.Material;
-import com.alexdl.sdng.backend.vulkan.Mesh;
-import com.alexdl.sdng.backend.vulkan.MeshData;
-import com.alexdl.sdng.backend.vulkan.Model;
-import com.alexdl.sdng.backend.vulkan.Texture;
 import com.alexdl.sdng.backend.vulkan.VulkanRenderer;
 import com.alexdl.sdng.backend.vulkan.structs.VertexDataStruct;
 import com.alexdl.sdng.logging.Logger;
+import com.alexdl.sdng.rendering.Material;
+import com.alexdl.sdng.rendering.Mesh;
+import com.alexdl.sdng.rendering.MeshData;
+import com.alexdl.sdng.rendering.Model;
+import com.alexdl.sdng.rendering.Texture;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
@@ -39,14 +38,12 @@ import static org.lwjgl.system.MemoryUtil.*;
 public class ResourceAssetLoader implements AssetLoader {
     private final VulkanRenderer renderer;
     private final ResourceFileLoader fileLoader;
-    private final Disposables disposables;
     private final Logger logger;
 
     @Inject
-    public ResourceAssetLoader(VulkanRenderer renderer, ResourceFileLoader fileLoader, Disposables disposables, Logger logger) {
+    public ResourceAssetLoader(VulkanRenderer renderer, ResourceFileLoader fileLoader, Logger logger) {
         this.renderer = renderer;
         this.fileLoader = fileLoader;
-        this.disposables = disposables;
         this.logger = logger;
     }
 
@@ -66,7 +63,7 @@ public class ResourceAssetLoader implements AssetLoader {
             materials.add(material);
         }
 
-        if(numMaterials != materials.size()) {
+        if (numMaterials != materials.size()) {
             logger.warn("Parsed materials size is not the same as loaded materials size! loaded=%d, parsed=%d, uri=%s",
                     numMaterials, materials.size(), resourceHandle);
         } else {
@@ -113,7 +110,7 @@ public class ResourceAssetLoader implements AssetLoader {
             vertices[(i * vertexSize) + 1] = aiVertex.y();
             vertices[(i * vertexSize) + 2] = aiVertex.z();
 
-            if(aiNormals != null) {
+            if (aiNormals != null) {
                 AIVector3D aiNormal = aiNormals.get(i);
                 vertices[(i * vertexSize) + 3] = aiNormal.x();
                 vertices[(i * vertexSize) + 4] = aiNormal.y();
@@ -163,18 +160,10 @@ public class ResourceAssetLoader implements AssetLoader {
         logger.info("Mesh has %d indices", indexBuffer.limit());
 
         VertexDataStruct.Buffer vertexBuffer = new VertexDataStruct.Buffer(vertices);
-
-        MeshData meshData = new MeshData(
-                renderer.getGraphicsQueue(),
-                renderer.getGraphicsCommandPool(),
-                vertexBuffer, indexBuffer
-        );
-
-        Mesh mesh = new Mesh(meshData, material);
+        MeshData meshData = renderer.createMeshData(vertexBuffer, indexBuffer);
         vertexBuffer.dispose();
-        disposables.add(meshData);
 
-        return mesh;
+        return new Mesh(meshData, material);
     }
 
     @Nonnull
