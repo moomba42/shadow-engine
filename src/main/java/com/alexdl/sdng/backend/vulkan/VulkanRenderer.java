@@ -3,11 +3,13 @@ package com.alexdl.sdng.backend.vulkan;
 import com.alexdl.sdng.Configuration;
 import com.alexdl.sdng.File;
 import com.alexdl.sdng.Renderer;
+import com.alexdl.sdng.backend.Light;
 import com.alexdl.sdng.backend.vulkan.structs.EnvironmentUboDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.MemoryBlockBuffer;
 import com.alexdl.sdng.backend.vulkan.structs.ModelDataStruct;
 import com.alexdl.sdng.backend.vulkan.structs.PushConstantStruct;
 import com.alexdl.sdng.backend.vulkan.structs.SceneDataStruct;
+import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
@@ -40,6 +42,7 @@ import static org.lwjgl.vulkan.VK10.*;
 public class VulkanRenderer implements Renderer {
     private static final int MAX_CONCURRENT_FRAME_DRAWS = 2;
     private static final int MAX_OBJECTS = 10;
+    private static final int MAX_LIGHTS = 5;
     private final VkInstance instance;
     private final VkSurfaceKHR surface;
     private final Long debugMessengerPointer;
@@ -117,10 +120,7 @@ public class VulkanRenderer implements Renderer {
         pushConstant = new PushConstantStruct();
         depthBufferImage = createDepthBufferImage(logicalDevice, swapchainImageConfig.extent().width(), swapchainImageConfig.extent().height());
 
-        environmentData = new EnvironmentUboDataStruct(10);
-        environmentData.setLightCount(2);
-        environmentData.setLight(0, -3, 3, 4, 1, 0, 0, 6, 0f, 0.1f);
-        environmentData.setLight(1, 3, -3, 0, 0, 1, 0, 6, 0, 0.1f);
+        environmentData = new EnvironmentUboDataStruct(MAX_LIGHTS);
         environmentUbo = new UniformBufferObject<>(logicalDevice, swapchainImages.size(), environmentData.size());
 
         descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
@@ -190,6 +190,25 @@ public class VulkanRenderer implements Renderer {
     @Override
     public void updatePushConstant(@Nonnull Matrix4f transform) {
         pushConstant.transform(transform);
+    }
+
+    @Override
+    public void updateLights(@NotNull List<Light> lights) {
+        environmentData.setLightCount(Math.min(MAX_LIGHTS, lights.size()));
+        for (int i = 0; i < lights.size() && i < MAX_LIGHTS; i++) {
+            Light light = lights.get(i);
+            environmentData.setLight(i,
+                    light.getPosition().x,
+                    light.getPosition().y,
+                    light.getPosition().z,
+                    light.getColor().x,
+                    light.getColor().y,
+                    light.getColor().z,
+                    light.getOuterRadius(),
+                    light.getInnerRadius(),
+                    light.getDecaySpeed()
+            );
+        }
     }
 
     @Override
@@ -375,7 +394,7 @@ public class VulkanRenderer implements Renderer {
 
 
                     Texture diffuseTexture = mesh.material().diffuse();
-                    if(diffuseTexture == null) {
+                    if (diffuseTexture == null) {
                         diffuseTexture = defaultTexture;
                     }
                     vkCmdBindDescriptorSets(

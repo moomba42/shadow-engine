@@ -34,7 +34,10 @@ public class EnvironmentUboDataStruct extends MemoryBlock<EnvironmentUboDataStru
     }
 
     @SuppressWarnings("PointlessArithmeticExpression")
-    public void setLight(int index, float positionX, float positionY, float positionZ, float colorR, float colorG, float colorB, float outerRadius, float innerRadius, float decaySpeed) {
+    public void setLight(int index,
+                         float positionX, float positionY, float positionZ,
+                         float colorR, float colorG, float colorB,
+                         float outerRadius, float innerRadius, float decaySpeed) {
         long address = address() + alignmentLight.getOffset() + ((long) index * alignmentLight.getAlignedSize());
         memPutFloat(address + alignmentLightPosition.getOffset() + (Float.BYTES * 0), positionX);
         memPutFloat(address + alignmentLightPosition.getOffset() + (Float.BYTES * 1), positionY);
