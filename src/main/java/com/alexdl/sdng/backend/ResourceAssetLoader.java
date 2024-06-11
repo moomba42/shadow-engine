@@ -11,7 +11,7 @@ import com.alexdl.sdng.rendering.MeshData;
 import com.alexdl.sdng.rendering.Model;
 import com.alexdl.sdng.rendering.Texture;
 import org.joml.Matrix4f;
-import org.joml.Vector4f;
+import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.assimp.AIColor4D;
@@ -28,6 +28,7 @@ import org.lwjgl.system.MemoryStack;
 import javax.annotation.Nonnull;
 import javax.inject.Inject;
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -93,7 +94,7 @@ public class ResourceAssetLoader implements AssetLoader {
             material = materials.get(materialIndex);
             logger.info("Mesh uses material with index %d", materialIndex);
         } else {
-            material = new Material(null, new Vector4f(1, 1, 1, 1));
+            material = new Material(null, new Vector3f(1), new Vector3f(0), 0);
             logger.info("Mesh references an invalid material (%d) so it will use a default one", materialIndex);
         }
 
@@ -171,6 +172,7 @@ public class ResourceAssetLoader implements AssetLoader {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             AIColor4D color = AIColor4D.calloc(stack);
             AIString path = AIString.calloc(stack);
+            FloatBuffer floatBuffer = stack.callocFloat(1);
 
             aiGetMaterialTexture(aiMaterial, aiTextureType_DIFFUSE, 0, path, (IntBuffer) null,
                     null, null, null, null, null);
@@ -179,16 +181,31 @@ public class ResourceAssetLoader implements AssetLoader {
             if (!diffuseTexturePath.isEmpty()) {
                 FileHandle resource = new FileHandle(diffuseTexturePath);
                 diffuseTexture = loadTexture(resource);
-                logger.info("Material has diffuse texture: %s", resource);
+                logger.info("Material has diffuseTexture texture: %s", resource);
             }
 
-            Vector4f diffuseColor = new Vector4f();
+            Vector3f diffuseColor = new Vector3f(); // Tint applied to the whole object and diffuse texture.
             int result = aiGetMaterialColor(aiMaterial, AI_MATKEY_COLOR_DIFFUSE, aiTextureType_NONE, 0, color);
             if (result == 0) {
-                diffuseColor = new Vector4f(color.r(), color.g(), color.b(), color.a());
-                logger.info("Material has diffuse color: %s", diffuseColor);
+                diffuseColor = new Vector3f(color.r(), color.g(), color.b());
+                logger.info("Material has diffuseTexture color: %s", diffuseColor);
             }
-            return new Material(diffuseTexture, diffuseColor);
+
+            Vector3f specularColor = new Vector3f(); // Color and opacity of the reflections.
+            result = aiGetMaterialColor(aiMaterial, AI_MATKEY_COLOR_SPECULAR, aiTextureType_NONE, 0, color);
+            if (result == 0) {
+                specularColor = new Vector3f(color.r(), color.g(), color.b());
+                logger.info("Material has specular color: %s", specularColor);
+            }
+
+            float specularExponent = 0; // Sharpness of the reflections / shininess. Higher is sharper.
+            result = aiGetMaterialFloatArray(aiMaterial, AI_MATKEY_SHININESS, aiTextureType_NONE, 0, floatBuffer, null);
+            if(result == 0) {
+                specularExponent = floatBuffer.get(0);
+                logger.info("Material has specular exponent: %s", specularExponent);
+            }
+
+            return new Material(diffuseTexture, diffuseColor, specularColor, specularExponent);
         }
     }
 

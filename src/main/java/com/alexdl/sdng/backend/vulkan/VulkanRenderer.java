@@ -384,7 +384,7 @@ public class VulkanRenderer implements Renderer {
                             VK_INDEX_TYPE_UINT32
                     );
 
-                    VulkanTexture diffuseTexture = (VulkanTexture) mesh.material().diffuse();
+                    VulkanTexture diffuseTexture = (VulkanTexture) mesh.material().diffuseTexture();
                     if (diffuseTexture == null) {
                         diffuseTexture = defaultTexture;
                     }
