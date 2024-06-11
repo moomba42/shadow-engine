@@ -22,7 +22,7 @@ public class UniformBufferObject<Data extends MemoryBlock<Data>> implements Disp
     protected final int instanceCount;
     protected final int instanceSizeBytes;
 
-    public UniformBufferObject(@Nonnull VkDevice logicalDevice, int instanceCount, int instanceSizeBytes) {
+    public UniformBufferObject(@Nonnull VkDevice logicalDevice, int instanceCount, int instanceSizeBytes, int stageFlags) {
         this.logicalDevice = logicalDevice;
         this.instanceCount = instanceCount;
         this.instanceSizeBytes = instanceSizeBytes;
@@ -34,7 +34,7 @@ public class UniformBufferObject<Data extends MemoryBlock<Data>> implements Disp
                     .binding(0)
                     .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
                     .descriptorCount(1)
-                    .stageFlags(VK_SHADER_STAGE_FRAGMENT_BIT);
+                    .stageFlags(stageFlags);
 
             VkDescriptorSetLayoutCreateInfo layoutCreateInfo = VkDescriptorSetLayoutCreateInfo.calloc(vk.stack())
                     .sType$Default()

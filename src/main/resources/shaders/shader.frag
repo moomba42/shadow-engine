@@ -14,8 +14,8 @@ struct Light {
     float decaySpeed;
 };
 
-layout(set = 1, binding = 0) uniform sampler2D diffuseSampler;
-layout(set = 2, binding = 0) uniform Environment {
+layout(set = 2, binding = 0) uniform sampler2D diffuseSampler;
+layout(set = 3, binding = 0) uniform Environment {
     int lightCount;
     Light lights[MAX_LIGHTS];
 } environment;

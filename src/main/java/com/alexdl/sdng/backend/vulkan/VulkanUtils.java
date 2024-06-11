@@ -265,13 +265,10 @@ public class VulkanUtils {
         }
     }
 
-    public static VkDescriptorPool createDescriptorPool(VkDevice logicalDevice, int sceneDescriptorCount, int modelDescriptorCount, int maxSets) {
+    public static VkDescriptorPool createModelDescriptorPool(VkDevice logicalDevice, int modelDescriptorCount, int maxSets) {
         try (VulkanSession vk = new VulkanSession()) {
-            VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(2, vk.stack());
+            VkDescriptorPoolSize.Buffer poolSizes = VkDescriptorPoolSize.calloc(1, vk.stack());
             poolSizes.get(0)
-                    .type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-                    .descriptorCount(sceneDescriptorCount);
-            poolSizes.get(1)
                     .type(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
                     .descriptorCount(modelDescriptorCount);
             VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = VkDescriptorPoolCreateInfo.calloc(vk.stack())
@@ -1008,17 +1005,11 @@ public class VulkanUtils {
         }
     }
 
-    public static VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
+    public static VkDescriptorSetLayout createModelSetLayout(VkDevice logicalDevice) {
         try (VulkanSession vk = new VulkanSession()) {
-            VkDescriptorSetLayoutBinding.Buffer descriptorSetLayoutBindings = VkDescriptorSetLayoutBinding.calloc(2, vk.stack());
+            VkDescriptorSetLayoutBinding.Buffer descriptorSetLayoutBindings = VkDescriptorSetLayoutBinding.calloc(1, vk.stack());
             descriptorSetLayoutBindings.get(0)
                     .binding(0)
-                    .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-                    .descriptorCount(1)
-                    .stageFlags(VK_SHADER_STAGE_VERTEX_BIT)
-                    .pImmutableSamplers(null);
-            descriptorSetLayoutBindings.get(1)
-                    .binding(1)
                     .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
                     .descriptorCount(1)
                     .stageFlags(VK_SHADER_STAGE_VERTEX_BIT)
@@ -1050,34 +1041,21 @@ public class VulkanUtils {
         }
     }
 
-    public static void connectDescriptorSetsToUniformBuffers(VkDevice logicalDevice, List<VkDescriptorSet> descriptorSets, List<VkBuffer> sceneUniformBuffers, long sceneUniformSize, List<VkBuffer> modelUniformBuffers, long modelUniformElementSize) {
-        assert descriptorSets.size() == sceneUniformBuffers.size();
+    public static void connectDescriptorSetsToUniformBuffers(VkDevice logicalDevice, List<VkDescriptorSet> descriptorSets, List<VkBuffer> modelUniformBuffers, long modelUniformElementSize) {
         assert descriptorSets.size() == modelUniformBuffers.size();
         try (VulkanSession vk = new VulkanSession()) {
             for (int i = 0; i < descriptorSets.size(); i++) {
-                VkWriteDescriptorSet.Buffer setWrites = VkWriteDescriptorSet.calloc(2, vk.stack());
-
-                VkDescriptorBufferInfo.Buffer sceneDescriptorBufferInfos = VkDescriptorBufferInfo.calloc(1, vk.stack())
-                        .buffer(sceneUniformBuffers.get(i).address())
-                        .offset(0)
-                        .range(sceneUniformSize);
-                setWrites.get(0)
-                        .sType$Default()
-                        .dstSet(descriptorSets.get(i).address())
-                        .dstBinding(0)
-                        .dstArrayElement(0)
-                        .descriptorCount(1)
-                        .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-                        .pBufferInfo(sceneDescriptorBufferInfos);
+                VkWriteDescriptorSet.Buffer setWrites = VkWriteDescriptorSet.calloc(1, vk.stack());
 
                 VkDescriptorBufferInfo.Buffer modelDescriptorBufferInfos = VkDescriptorBufferInfo.calloc(1, vk.stack())
                         .buffer(modelUniformBuffers.get(i).address())
                         .offset(0)
                         .range(modelUniformElementSize);
-                setWrites.get(1)
+
+                setWrites.get(0)
                         .sType$Default()
                         .dstSet(descriptorSets.get(i).address())
-                        .dstBinding(1)
+                        .dstBinding(0)
                         .dstArrayElement(0)
                         .descriptorCount(1)
                         .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)

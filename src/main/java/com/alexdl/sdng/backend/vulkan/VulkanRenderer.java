@@ -57,7 +57,7 @@ public class VulkanRenderer implements Renderer {
     private final SwapchainImageConfig swapchainImageConfig;
     private final VkSwapchainKHR swapchain;
 
-    private final VkDescriptorSetLayout descriptorSetLayout;
+    private final VkDescriptorSetLayout modelSetLayout;
     private final VkDescriptorPool descriptorPool;
     private final VkPipelineLayout pipelineLayout;
     private final VkRenderPass renderPass;
@@ -71,14 +71,14 @@ public class VulkanRenderer implements Renderer {
     private final List<VkCommandBuffer> swapchainCommandBuffers;
     private final List<VkBuffer> modelUniformBuffers;
     private final MemoryBlockBuffer<ModelDataStruct> modelUniformTransferSpace;
-    private final List<VkDescriptorSet> descriptorSets;
+    private final List<VkDescriptorSet> modelDescriptorSets;
 
     // Assets
     private final List<VulkanMeshData> meshes;
-    private final List<VkBuffer> sceneUniformBuffers; // For each swapchain image
-    private final SceneDataStruct sceneData;
 
-    // Environment
+    // UBOs
+    private final SceneDataStruct sceneData;
+    private final UniformBufferObject<SceneDataStruct> sceneUbo;
     private final EnvironmentUboDataStruct environmentData;
     private final UniformBufferObject<EnvironmentUboDataStruct> environmentUbo;
 
@@ -121,19 +121,6 @@ public class VulkanRenderer implements Renderer {
 
         depthBufferImage = createDepthBufferImage(logicalDevice, swapchainImageConfig.extent().width(), swapchainImageConfig.extent().height());
 
-        environmentData = new EnvironmentUboDataStruct(MAX_LIGHTS);
-        environmentUbo = new UniformBufferObject<>(logicalDevice, swapchainImages.size(), environmentData.size());
-
-        descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
-        samplerSetLayout = createSamplerSetLayout(logicalDevice);
-        pipelineLayout = createPipelineLayout(logicalDevice, List.of(descriptorSetLayout, samplerSetLayout, environmentUbo.getDescriptorSetLayout()));
-        renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format(), depthBufferImage.format());
-        graphicsPipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
-        graphicsCommandPool = createCommandPool(logicalDevice, queueIndices.graphical());
-
-        swapchainFramebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages, depthBufferImage);
-        swapchainCommandBuffers = createCommandBuffers(logicalDevice, graphicsCommandPool, swapchainFramebuffers);
-
         Matrix4f projection = new Matrix4f()
                 .perspective(
                         (float) Math.toRadians(45.0f),
@@ -141,13 +128,27 @@ public class VulkanRenderer implements Renderer {
                         0.01f,
                         100.0f);
         projection.set(1, 1, projection.getRowColumn(1, 1) * -1);
+        Matrix4f view = new Matrix4f().lookAt(
+                new Vector3f(0.0f, 0.0f, 10.0f),
+                new Vector3f(0.0f, 0.0f, 0.0f),
+                new Vector3f(0.0f, 1.0f, 0.0f));
 
-        sceneData = new SceneDataStruct()
-                .projection(projection)
-                .view(new Matrix4f().lookAt(
-                        new Vector3f(0.0f, 0.0f, 10.0f),
-                        new Vector3f(0.0f, 0.0f, 0.0f),
-                        new Vector3f(0.0f, 1.0f, 0.0f)));
+        environmentData = new EnvironmentUboDataStruct(MAX_LIGHTS);
+        environmentUbo = new UniformBufferObject<>(logicalDevice, swapchainImages.size(), environmentData.size(), VK_SHADER_STAGE_FRAGMENT_BIT);
+        sceneData = new SceneDataStruct().projection(projection).view(view);
+        sceneUbo = new UniformBufferObject<>(logicalDevice, swapchainImages.size(), sceneData.size(), VK_SHADER_STAGE_VERTEX_BIT);
+
+
+        modelSetLayout = createModelSetLayout(logicalDevice);
+        samplerSetLayout = createSamplerSetLayout(logicalDevice);
+        pipelineLayout = createPipelineLayout(logicalDevice, List.of(sceneUbo.getDescriptorSetLayout(), modelSetLayout, samplerSetLayout, environmentUbo.getDescriptorSetLayout()));
+        renderPass = createRenderPass(logicalDevice, swapchainImageConfig.format(), depthBufferImage.format());
+        graphicsPipeline = createGraphicsPipeline(logicalDevice, swapchainImageConfig.extent(), pipelineLayout, renderPass);
+        graphicsCommandPool = createCommandPool(logicalDevice, queueIndices.graphical());
+
+        swapchainFramebuffers = createFramebuffers(logicalDevice, renderPass, swapchainImageConfig, swapchainImages, depthBufferImage);
+        swapchainCommandBuffers = createCommandBuffers(logicalDevice, graphicsCommandPool, swapchainFramebuffers);
+
 
         int minUniformBufferOffsetAlignment;
         try (VulkanSession vk = new VulkanSession()) {
@@ -155,12 +156,11 @@ public class VulkanRenderer implements Renderer {
         }
 
         modelUniformTransferSpace = new MemoryBlockBuffer<>(MAX_OBJECTS, new ModelDataStruct(), minUniformBufferOffsetAlignment);
-        sceneUniformBuffers = createUniformBuffers(logicalDevice, swapchainImages.size(), sceneData.size());
         modelUniformBuffers = createUniformBuffers(logicalDevice, swapchainImages.size(), modelUniformTransferSpace.size());
-        descriptorPool = createDescriptorPool(logicalDevice, sceneUniformBuffers.size(), modelUniformBuffers.size(), swapchainImages.size());
+        descriptorPool = createModelDescriptorPool(logicalDevice, modelUniformBuffers.size(), swapchainImages.size());
         samplerDescriptorPool = createSamplerDescriptorPool(logicalDevice, MAX_OBJECTS, MAX_OBJECTS);
-        descriptorSets = createDescriptorSets(logicalDevice, descriptorPool, descriptorSetLayout, swapchainImages.size());
-        connectDescriptorSetsToUniformBuffers(logicalDevice, descriptorSets, sceneUniformBuffers, sceneData.size(), modelUniformBuffers, modelUniformTransferSpace.elementSize());
+        modelDescriptorSets = createDescriptorSets(logicalDevice, descriptorPool, modelSetLayout, swapchainImages.size());
+        connectDescriptorSetsToUniformBuffers(logicalDevice, modelDescriptorSets, modelUniformBuffers, modelUniformTransferSpace.elementSize());
 
         images = new ArrayList<>(10);
         sampler = createTextureSampler(logicalDevice);
@@ -252,6 +252,9 @@ public class VulkanRenderer implements Renderer {
         vkDestroyDescriptorPool(logicalDevice, samplerDescriptorPool.address(), null);
         vkDestroyDescriptorSetLayout(logicalDevice, samplerSetLayout.address(), null);
 
+        environmentUbo.dispose();
+        sceneUbo.dispose();
+
         vkDestroySampler(logicalDevice, sampler.address(), null);
 
         for (VulkanMeshData mesh : meshes) {
@@ -271,14 +274,8 @@ public class VulkanRenderer implements Renderer {
         sceneData.dispose();
 
         vkDestroyDescriptorPool(logicalDevice, descriptorPool.address(), null);
-        vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout.address(), null);
+        vkDestroyDescriptorSetLayout(logicalDevice, modelSetLayout.address(), null);
         for (VkBuffer buffer : modelUniformBuffers) {
-            vkDestroyBuffer(logicalDevice, buffer.address(), null);
-            if (buffer.memory() != null) {
-                vkFreeMemory(logicalDevice, buffer.memory().address(), null);
-            }
-        }
-        for (VkBuffer buffer : sceneUniformBuffers) {
             vkDestroyBuffer(logicalDevice, buffer.address(), null);
             if (buffer.memory() != null) {
                 vkFreeMemory(logicalDevice, buffer.memory().address(), null);
@@ -310,11 +307,7 @@ public class VulkanRenderer implements Renderer {
     private void updateUniforms(int imageIndex) {
         try (VulkanSession vk = new VulkanSession()) {
             // Scene
-            VkDeviceMemory sceneMemory = sceneUniformBuffers.get(imageIndex).memory();
-            assert sceneMemory != null;
-            long sceneTarget = vk.mapMemoryPointer(logicalDevice, sceneMemory, 0, sceneData.size(), 0);
-            memCopy(sceneData.address(), sceneTarget, sceneData.size());
-            vk.unmapMemory(logicalDevice, sceneMemory);
+            sceneUbo.updateBuffer(imageIndex, sceneData);
 
             // Environment
             environmentUbo.updateBuffer(imageIndex, environmentData);
@@ -322,9 +315,9 @@ public class VulkanRenderer implements Renderer {
             // Models
             int modelCounter = 0;
             for (Model model : modelsToDraw) {
-                modelUniformTransferSpace.get(modelCounter).modelTransform(model.transform());
-                // TODO: Replace this with actual normal matrix
-                modelUniformTransferSpace.get(modelCounter).normalTransform(new Matrix4f(model.transform()).invert().transpose());
+                modelUniformTransferSpace.get(modelCounter)
+                        .modelTransform(model.transform())
+                        .normalTransform(new Matrix4f(model.transform()).invert().transpose());
                 modelCounter = modelCounter + 1;
             }
             VkDeviceMemory modelMemory = modelUniformBuffers.get(imageIndex).memory();
@@ -394,7 +387,8 @@ public class VulkanRenderer implements Renderer {
                             pipelineLayout.address(),
                             0,
                             vk.stack().longs(
-                                    descriptorSets.get(imageIndex).address(),
+                                    sceneUbo.getDescriptorSet(imageIndex).address(),
+                                    modelDescriptorSets.get(imageIndex).address(),
                                     diffuseTexture.descriptorSet().address(),
                                     environmentUbo.getDescriptorSet(imageIndex).address()
                             ),
